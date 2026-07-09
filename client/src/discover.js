@@ -2,6 +2,16 @@ const PORT = 3847;
 
 const CLOUD_HOSTS = ['.vercel.app', '.github.io', '.pages.dev', '.netlify.app', '.fly.dev'];
 
+/** Live cloud server URL — no WiFi host required. */
+export function getCloudServerUrl() {
+  const configured = import.meta.env.VITE_CLOUD_SERVER?.trim();
+  return configured ? configured.replace(/\/$/, '') : null;
+}
+
+export function isCloudClient() {
+  return import.meta.env.VITE_CLOUD === 'true' || !!getCloudServerUrl();
+}
+
 /** True only on the static universal-link page (Vercel etc.), not every HTTPS site. */
 export function isUniversalOrigin() {
   if (import.meta.env.VITE_UNIVERSAL === 'true') return true;
@@ -187,6 +197,16 @@ export function getServerUrl() {
   if (saved) localStorage.removeItem('nearby-server');
   const params = new URLSearchParams(window.location.search);
   if (params.get('server')) return params.get('server').replace(/\/$/, '');
+
+  const cloud = getCloudServerUrl();
+  if (isCloudClient()) {
+    if (cloud && window.location.origin.replace(/\/$/, '') === cloud) {
+      return cloud;
+    }
+    if (cloud) return cloud;
+    if (!isUniversalOrigin()) return window.location.origin;
+  }
+
   if (isUniversalOrigin()) {
     return `http://localhost:${PORT}`;
   }
