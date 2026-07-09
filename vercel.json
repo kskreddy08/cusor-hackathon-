@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd client && VITE_UNIVERSAL=true npm run build",
+  "outputDirectory": "client/dist",
+  "framework": null,
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

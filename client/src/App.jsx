@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { discoverServer, checkServer, saveServer, getServerUrl } from './discover';
+import { discoverServer, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink } from './discover';
 import './App.css';
 
 const ADJECTIVES = ['Blue', 'Swift', 'Calm', 'Bold', 'Bright', 'Cool', 'Wild', 'Zen', 'Lucky', 'Neon'];
@@ -186,17 +186,26 @@ export default function App() {
     setLobbyLoading(true);
     setLobbyError(null);
 
-    const current = getServerUrl();
-    let base = await checkServer(current);
+    const universal = isUniversalOrigin();
+    let base = null;
 
-    if (!base && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-      base = await checkServer('http://localhost:3847');
-    }
-
-    if (!base) {
+    if (universal) {
       setScreen('scanning');
       setScanStatus('Finding Nearby on your WiFi…');
       base = await discoverServer(setScanStatus);
+    } else {
+      const current = getServerUrl();
+      base = await checkServer(current);
+
+      if (!base && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+        base = await checkServer('http://localhost:3847');
+      }
+
+      if (!base) {
+        setScreen('scanning');
+        setScanStatus('Finding Nearby on your WiFi…');
+        base = await discoverServer(setScanStatus);
+      }
     }
 
     if (!base) {
@@ -324,13 +333,15 @@ export default function App() {
   const hasIncoming = (id) => friendRequests.incoming.some((r) => r.from === id);
 
   const isHostComputer = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const phoneUrl = serverInfo?.lanUrl || serverInfo?.bestPhoneUrl || serverInfo?.phoneUrls?.[0] || null;
+  const universalLink = serverInfo?.universalLink || getUniversalLink();
+  const shareLink = universalLink || serverInfo?.lanUrl || serverInfo?.bestPhoneUrl || serverInfo?.phoneUrls?.[0] || null;
+  const localLink = serverInfo?.lanUrl || serverInfo?.bestPhoneUrl || serverInfo?.phoneUrls?.[0] || null;
 
-  const copyPhoneUrl = async () => {
-    const url = phoneUrl;
+  const copyShareLink = async () => {
+    const url = shareLink;
     if (!url) return;
     try {
-      await navigator.clipboard.writeText(phoneUrl);
+      await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -344,7 +355,7 @@ export default function App() {
         <div className="join-card scanning-card">
           <div className="logo pulse">📡</div>
           <h1>Nearby</h1>
-          <p className="tagline">Finding chat on your WiFi…</p>
+          <p className="tagline">{isUniversalOrigin() ? 'Connecting to your WiFi…' : 'Finding chat on your WiFi…'}</p>
           <p className="scan-status">{scanStatus}</p>
           <div className="spinner" />
         </div>
@@ -366,7 +377,7 @@ export default function App() {
           <div className="empty-rooms">
             <p><strong>This link only works on the same WiFi.</strong></p>
             <p>Rooms you see here are only from people connected to <em>your</em> network right now — not from other places in the world.</p>
-            <p className="hint-small">Ask someone on this WiFi to run <code>./start.sh</code>, then open <code>http://nearby.local:3847</code></p>
+            <p className="hint-small">Ask someone on this WiFi to run <code>./start.sh</code>, then share the universal link or open <code>http://nearby.local:3847</code></p>
           </div>
           <button type="button" className="btn-primary btn-create" onClick={() => { setScreen('scanning'); initNetwork(); }}>
             Scan WiFi again
@@ -417,16 +428,19 @@ export default function App() {
             </div>
           </div>
 
-          {isHostComputer && phoneUrl && screen === 'lobby' && (
+          {isHostComputer && shareLink && screen === 'lobby' && (
             <div className="phone-help share-link">
-              <h3>Share this open link</h3>
-              <p>Send to anyone on your WiFi — they tap it and see the same rooms:</p>
+              <h3>Share this one link</h3>
+              <p>Anyone on your WiFi taps it — we find this network automatically and show live rooms:</p>
               <div className="phone-url-row">
-                <code>{phoneUrl}</code>
-                <button type="button" className="btn-copy" onClick={copyPhoneUrl}>
+                <code>{shareLink}</code>
+                <button type="button" className="btn-copy" onClick={copyShareLink}>
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
+              {localLink && localLink !== shareLink && (
+                <p className="hint-small">Or same WiFi direct: <code>{localLink}</code></p>
+              )}
             </div>
           )}
 

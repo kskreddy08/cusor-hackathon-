@@ -47,6 +47,7 @@ if (!health.ok) fail('health check');
 
 const info = await fetch(`${BASE}/api/info`).then((r) => r.json());
 if (!info.lanUrl) fail('api/info missing lanUrl');
+if (!info.universalLink) fail('api/info missing universalLink');
 
 // --- user A creates room ---
 const a = await connect();

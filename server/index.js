@@ -7,6 +7,7 @@ const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 3847;
+const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://nearby-chat.vercel.app').replace(/\/$/, '');
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -360,8 +361,9 @@ app.get('/api/info', (_req, res) => {
     phoneUrls,
     lanUrl,
     bestPhoneUrl: lanUrl,
+    universalLink: UNIVERSAL_LINK,
     joinUrl: `http://localhost:${PORT}`,
-    phoneHint: `Open this link on the same WiFi to see live rooms`,
+    phoneHint: `Share the universal link — anyone on this WiFi sees live rooms`,
     scope: 'wifi-local',
   });
 });
@@ -390,8 +392,11 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('  ║  Nearby — same WiFi chat is live!             ║');
   console.log('  ╚══════════════════════════════════════════════╝\n');
   console.log(`  This device:     http://localhost:${PORT}`);
-  console.log(`\n  ANY device on same WiFi — open in browser:`);
-  console.log(`  → ${lanName}   ← easiest, bookmark this!`);
+  console.log(`\n  ANY device on same WiFi — share this one link:`);
+  console.log(`  → ${UNIVERSAL_LINK}`);
+  console.log(`     (auto-finds this WiFi, then shows live rooms)`);
+  console.log(`\n  Or open directly on this network:`);
+  console.log(`  → ${lanName}   ← bookmark on this WiFi`);
   ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
   console.log('\n  One person runs ./start.sh. Everyone else just opens the link.');
   console.log('  Keep this terminal open.\n');

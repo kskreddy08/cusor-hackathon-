@@ -7,6 +7,7 @@
     "dev:server": "node server/index.js",
     "dev:client": "cd client && npm run dev",
     "build": "cd client && npm run build",
+    "build:universal": "cd client && VITE_UNIVERSAL=true npm run build",
     "start": "NODE_ENV=production node server/index.js",
     "start:phone": "bash start-phone.sh",
     "test": "node scripts/test.mjs",
