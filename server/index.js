@@ -331,10 +331,16 @@ app.get('/api/rooms', (_req, res) => {
 });
 
 app.get('/api/info', (_req, res) => {
+  const ips = getLocalIPs();
+  const phoneUrls = ips.map((ip) => `http://${ip}:${PORT}`);
   res.json({
     port: PORT,
-    ips: getLocalIPs(),
+    ips,
+    phoneUrls,
     joinUrl: `http://localhost:${PORT}`,
+    phoneHint: phoneUrls[0]
+      ? `On your phone (same WiFi), open: ${phoneUrls[0]}`
+      : 'Connect phone to the same WiFi, then use your laptop IP address with port 3847',
   });
 });
 
@@ -348,8 +354,18 @@ if (process.env.NODE_ENV === 'production') {
 
 server.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
-  console.log(`\n  Nearby Chat running on port ${PORT}`);
-  console.log(`  Local:   http://localhost:${PORT}`);
-  ips.forEach((ip) => console.log(`  Network: http://${ip}:${PORT}`));
-  console.log('\n  Share the network URL with anyone on the same WiFi.\n');
+  console.log('\n  ╔══════════════════════════════════════════════╗');
+  console.log('  ║  Nearby is running!                          ║');
+  console.log('  ╚══════════════════════════════════════════════╝\n');
+  console.log(`  LAPTOP (this computer):  http://localhost:${PORT}`);
+  if (ips.length) {
+    console.log('\n  PHONE (same WiFi) — type this in Safari/Chrome:');
+    ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
+  } else {
+    console.log('\n  PHONE: could not detect WiFi IP.');
+    console.log('  Find your laptop IP in WiFi settings, then open:');
+    console.log(`  → http://YOUR-LAPTOP-IP:${PORT}`);
+  }
+  console.log('\n  Do NOT type "localhost" on your phone — it will not work.');
+  console.log('  Keep this terminal open while testing.\n');
 });

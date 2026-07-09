@@ -50,6 +50,8 @@ export default function App() {
   const [roomCount, setRoomCount] = useState(0);
   const [showRoomsPopup, setShowRoomsPopup] = useState(false);
   const [lobbyError, setLobbyError] = useState(null);
+  const [serverInfo, setServerInfo] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   const socketRef = useRef(null);
   const myIdRef = useRef(null);
@@ -122,12 +124,18 @@ export default function App() {
     const base = getServerUrl();
     fetch(`${base}/api/info`)
       .then((r) => r.json())
-      .then(() => {
+      .then((info) => {
+        setServerInfo(info);
         setNetworkReady(true);
         setupSocket();
       })
       .catch(() => {
-        setLobbyError('Could not reach the network. Make sure you are on the same WiFi as the host.');
+        const onPhone = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+        setLobbyError(
+          onPhone
+            ? 'Cannot reach the app. On your laptop run ./start.sh, then open the http://192.168.x.x:3847 address shown in the terminal (not localhost). Phone and laptop must use the same WiFi.'
+            : 'Could not start. Run ./start.sh in the project folder and keep the terminal open.'
+        );
       });
 
     const poll = setInterval(() => {
@@ -211,6 +219,20 @@ export default function App() {
   const hasOutgoing = (id) => friendRequests.outgoing.some((r) => r.to === id);
   const hasIncoming = (id) => friendRequests.incoming.some((r) => r.from === id);
 
+  const isHostComputer = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const phoneUrl = serverInfo?.phoneUrls?.[0] || null;
+
+  const copyPhoneUrl = async () => {
+    if (!phoneUrl) return;
+    try {
+      await navigator.clipboard.writeText(phoneUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setLobbyError('Copy failed — type the URL manually in your phone browser.');
+    }
+  };
+
   if (screen === 'lobby' || screen === 'create') {
     return (
       <div className="join-screen">
@@ -247,6 +269,25 @@ export default function App() {
           </label>
 
           {lobbyError && <p className="error-text">{lobbyError}</p>}
+
+          {isHostComputer && phoneUrl && screen === 'lobby' && (
+            <div className="phone-help">
+              <h3>📱 Open on your phone</h3>
+              <p>Same WiFi. Do <strong>not</strong> use localhost on the phone.</p>
+              <div className="phone-url-row">
+                <code>{phoneUrl}</code>
+                <button type="button" className="btn-copy" onClick={copyPhoneUrl}>
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!isHostComputer && networkReady && screen === 'lobby' && (
+            <div className="phone-help on-phone">
+              <p>✓ You're on a phone/device. Connected to the host.</p>
+            </div>
+          )}
 
           {screen === 'lobby' && (
             <>

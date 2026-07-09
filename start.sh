@@ -16,4 +16,7 @@ if [ ! -d client/dist ]; then
 fi
 
 echo ""
+echo "  Starting server (use this for phone testing)..."
+echo ""
+
 NODE_ENV=production node server/index.js

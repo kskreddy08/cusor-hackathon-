@@ -235,6 +235,62 @@
   color: white;
 }
 
+.phone-help {
+  background: rgba(99, 102, 241, 0.12);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.phone-help h3 {
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.phone-help p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.phone-help.on-phone {
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.phone-help.on-phone p {
+  color: var(--success);
+  margin: 0;
+}
+
+.phone-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.phone-url-row code {
+  flex: 1;
+  background: var(--surface2);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--accent-hover);
+}
+
+.btn-copy {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  flex-shrink: 0;
+}
+
 .logo {
   font-size: 48px;
   margin-bottom: 8px;
