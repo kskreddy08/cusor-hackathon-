@@ -9,6 +9,8 @@
     "build": "cd client && npm run build",
     "build:universal": "cd client && VITE_UNIVERSAL=true npm run build",
     "start": "NODE_ENV=production node server/index.js",
+    "host": "bash start.sh",
+    "host:live": "bash start-live.sh",
     "start:phone": "bash start-phone.sh",
     "test": "node scripts/test.mjs",
     "test:ui": "node scripts/test-ui.mjs",

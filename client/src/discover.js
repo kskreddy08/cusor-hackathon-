@@ -2,15 +2,10 @@ const PORT = 3847;
 
 const CLOUD_HOSTS = ['.vercel.app', '.github.io', '.pages.dev', '.netlify.app', '.fly.dev'];
 
-function wait(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** True when opened from the public universal link (HTTPS cloud page, not the local host). */
+/** True only on the static universal-link page (Vercel etc.), not every HTTPS site. */
 export function isUniversalOrigin() {
   if (import.meta.env.VITE_UNIVERSAL === 'true') return true;
-  const { protocol, hostname } = window.location;
-  if (protocol === 'https:') return true;
+  const { hostname } = window.location;
   return CLOUD_HOSTS.some((suffix) => hostname.endsWith(suffix));
 }
 

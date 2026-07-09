@@ -8,7 +8,7 @@
     <script>
       (function () {
         var host = location.hostname;
-        var cloud = location.protocol === 'https:' || /vercel\.app|github\.io|pages\.dev|netlify\.app/i.test(host);
+        var cloud = /vercel\.app|github\.io|pages\.dev|netlify\.app/i.test(host);
         if (!cloud) return;
         try { sessionStorage.setItem('nearby-auto-join', 'lounge'); } catch (e) {}
         var saved = null;
