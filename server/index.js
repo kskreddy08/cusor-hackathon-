@@ -7,7 +7,9 @@ const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 3847;
-const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://nearby-chat-weld.vercel.app').replace(/\/$/, '');
+const CLOUD_MODE = process.env.CLOUD_MODE === 'true' || !!process.env.RENDER;
+const PUBLIC_URL = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/$/, '');
+const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || PUBLIC_URL || 'https://nearby-chat-live.onrender.com').replace(/\/$/, '');
 const PUBLIC_LOUNGE_ID = 'public-lounge';
 const PUBLIC_LOUNGE_NAME = 'Open Lounge';
 const app = express();
@@ -430,6 +432,7 @@ io.on('connection', (socket) => {
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
+    cloud: CLOUD_MODE,
     rooms: listRooms().length,
     lounge: PUBLIC_LOUNGE_ID,
     loungeName: PUBLIC_LOUNGE_NAME,
@@ -447,19 +450,22 @@ app.get('/api/info', (_req, res) => {
   const lanUrl = `http://nearby.local:${PORT}`;
   res.json({
     port: PORT,
+    cloud: CLOUD_MODE,
     ips,
     phoneUrls,
     lanUrl,
-    bestPhoneUrl: lanUrl,
+    bestPhoneUrl: CLOUD_MODE ? UNIVERSAL_LINK : lanUrl,
     universalLink: UNIVERSAL_LINK,
-    joinUrl: `http://localhost:${PORT}`,
-    phoneHint: `Share the universal link — anyone on this WiFi sees live rooms`,
-    scope: 'wifi-local',
+    joinUrl: UNIVERSAL_LINK,
+    phoneHint: CLOUD_MODE
+      ? 'Open the link — Open Lounge is always live. No install needed.'
+      : 'Share the universal link — anyone on this WiFi sees live rooms',
+    scope: CLOUD_MODE ? 'cloud-live' : 'wifi-local',
   });
 });
 
-if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(__dirname, '..', 'client', 'dist');
+const clientDist = path.join(__dirname, '..', 'client', 'dist');
+if (CLOUD_MODE || process.env.NODE_ENV === 'production') {
   app.use(express.static(clientDist));
   app.get('*', (_req, res) => {
     res.sendFile(path.join(clientDist, 'index.html'));
@@ -476,6 +482,16 @@ server.listen(PORT, '0.0.0.0', () => {
     bonjour.publish({ name: 'nearby', type: 'http', port: PORT });
   } catch (e) {
     console.log('  (mDNS advertise skipped:', e.message, ')');
+  }
+
+  if (CLOUD_MODE) {
+    console.log('\n  ╔══════════════════════════════════════════════╗');
+    console.log('  ║  Nearby — LIVE cloud server running!          ║');
+    console.log('  ╚══════════════════════════════════════════════╝\n');
+    console.log(`  Open Lounge is always on at:`);
+    console.log(`  → ${UNIVERSAL_LINK}`);
+    console.log(`\n  Public lounge "${PUBLIC_LOUNGE_NAME}" — no local install needed.\n`);
+    return;
   }
 
   console.log('\n  ╔══════════════════════════════════════════════╗');

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: nearby-chat-live
+    runtime: node
+    plan: free
+    buildCommand: npm run install:all && npm run build:cloud
+    startCommand: npm run start:cloud
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLOUD_MODE
+        value: "true"
+      - key: UNIVERSAL_LINK
+        value: https://nearby-chat-live.onrender.com

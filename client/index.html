@@ -11,13 +11,7 @@
         var cloud = /vercel\.app|github\.io|pages\.dev|netlify\.app/i.test(host);
         if (!cloud) return;
         try { sessionStorage.setItem('nearby-auto-join', 'lounge'); } catch (e) {}
-        var saved = null;
-        try { saved = localStorage.getItem('nearby-server'); } catch (e) {}
-        if (saved && saved.indexOf('http://') === 0 && saved.indexOf('loca.lt') === -1) {
-          location.replace(saved);
-          return;
-        }
-        location.replace('http://nearby.local:3847');
+        location.replace('https://nearby-chat-live.onrender.com');
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

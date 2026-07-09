@@ -1,6 +1,6 @@
 {
   "installCommand": "npm run install:all",
-  "buildCommand": "VITE_UNIVERSAL=true VITE_UNIVERSAL_LINK=https://nearby-chat-weld.vercel.app npm run build:universal",
+  "buildCommand": "npm run build:universal",
   "outputDirectory": "client/dist",
   "framework": null,
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]

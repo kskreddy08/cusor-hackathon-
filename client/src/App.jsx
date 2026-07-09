@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { discoverServer, discoverFromUniversalLink, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink, jumpToLocalHost } from './discover';
+import { discoverServer, discoverFromUniversalLink, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink, jumpToLocalHost, isCloudClient, getCloudServerUrl } from './discover';
 import { PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME, withPublicLounge, roomListCount } from './rooms';
 import './App.css';
 
@@ -201,6 +201,53 @@ export default function App() {
   const initNetwork = useCallback(async () => {
     setLobbyLoading(true);
     setLobbyError(null);
+
+    const cloudUrl = getCloudServerUrl();
+    const cloudMode = isCloudClient();
+
+    if (cloudMode && cloudUrl) {
+      setScreen('lobby');
+      applyRooms([]);
+      setScanStatus('Connecting to live server…');
+
+      let base = await checkServer(cloudUrl);
+      if (!base && !isUniversalOrigin()) {
+        base = await checkServer(window.location.origin);
+      }
+
+      if (!base) {
+        setNetworkReady(false);
+        setLobbyLoading(false);
+        setLobbyError('Live server waking up… try again in 30 seconds.');
+        return;
+      }
+
+      saveServer(base);
+      setServerBase(base);
+      const here = window.location.origin.replace(/\/$/, '');
+      if (base !== here && isUniversalOrigin()) {
+        window.location.replace(base);
+        return;
+      }
+
+      try {
+        const [info, roomsData] = await Promise.all([
+          fetch(`${base}/api/info`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()),
+          fetch(`${base}/api/rooms`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()),
+        ]);
+        setServerInfo(info);
+        applyRooms(roomsData.rooms);
+        setNetworkReady(true);
+        setLobbyLoading(false);
+        setLobbyError(null);
+        setupSocket();
+      } catch {
+        setNetworkReady(false);
+        setLobbyLoading(false);
+        setLobbyError('Live server waking up… refresh in a moment.');
+      }
+      return;
+    }
 
     const universal = isUniversalOrigin();
     let base = null;
@@ -475,13 +522,15 @@ export default function App() {
         <div className="join-card lobby-card">
           <div className="logo">📡</div>
           <h1>Nearby</h1>
-          <p className="tagline">Open link · host or join · same WiFi only</p>
+          <p className="tagline">Open link · Open Lounge always live</p>
 
           <div className="wifi-scope-banner">
-            <span className="wifi-icon">📶</span>
+            <span className="wifi-icon">☁️</span>
             <div>
-              <strong>Rooms on this WiFi right now</strong>
-              <p>Anyone on the same network can open this link and see these rooms. Other WiFi networks have their own separate rooms.</p>
+              <strong>{isCloudClient() ? 'Live cloud chat' : 'Rooms on this WiFi right now'}</strong>
+              <p>{isCloudClient()
+                ? 'No install. Open the link, join Open Lounge, chat instantly.'
+                : 'Anyone on the same network can open this link and see these rooms. Other WiFi networks have their own separate rooms.'}</p>
             </div>
           </div>
 
@@ -525,8 +574,8 @@ export default function App() {
                     <span className="room-pill default">Always open</span>
                     <p className="hint-small">
                       {networkReady
-                        ? 'Public room on this WiFi — jump in anytime.'
-                        : 'Waiting for a host on this WiFi (someone runs ./start.sh).'}
+                        ? (isCloudClient() ? 'Always open — tap to join and chat.' : 'Public room on this WiFi — jump in anytime.')
+                        : (isCloudClient() ? 'Connecting to live server…' : 'Waiting for a host on this WiFi (someone runs ./start.sh).')}
                     </p>
                   </div>
                   <button
@@ -594,7 +643,17 @@ export default function App() {
                 + Host a room
               </button>
 
-              {!networkReady && (
+              {!networkReady && isCloudClient() && (
+                <div className="manual-connect connect-hero">
+                  <p><strong>Live server is starting…</strong></p>
+                  <p className="hint-small">Free cloud servers take ~30s to wake up if idle.</p>
+                  <button type="button" className="btn-primary btn-connect-wifi" onClick={() => initNetwork()}>
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {!networkReady && !isCloudClient() && (
                 <div className="manual-connect connect-hero">
                   <p><strong>Not connected to a WiFi host yet.</strong></p>
                   <p className="hint-small">Someone on this WiFi must run <code>./start.sh</code> on a laptop first.</p>

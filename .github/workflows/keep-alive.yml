@@ -1,0 +1,13 @@
+name: Keep cloud server awake
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render health
+        run: curl -sf https://nearby-chat-live.onrender.com/api/health || true
