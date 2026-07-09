@@ -21,10 +21,15 @@ function slugify(text) {
 }
 
 function getServerUrl() {
+  const saved = localStorage.getItem('nearby-server');
+  if (saved) return saved.replace(/\/$/, '');
   const params = new URLSearchParams(window.location.search);
-  if (params.get('server')) return params.get('server');
-  if (import.meta.env.DEV) return '';
+  if (params.get('server')) return params.get('server').replace(/\/$/, '');
   return window.location.origin;
+}
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
 export default function App() {
@@ -53,6 +58,9 @@ export default function App() {
   const [lobbyError, setLobbyError] = useState(null);
   const [serverInfo, setServerInfo] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [socketOk, setSocketOk] = useState(false);
+  const [manualUrl, setManualUrl] = useState('');
+  const [showManual, setShowManual] = useState(false);
 
   const socketRef = useRef(null);
   const myIdRef = useRef(null);
@@ -73,19 +81,25 @@ export default function App() {
     if (socketRef.current) return socketRef.current;
 
     const url = getServerUrl();
-    const socket = io(url || undefined, {
-      transports: ['websocket', 'polling'],
+    const socket = io(url, {
+      transports: isMobileDevice() ? ['polling', 'websocket'] : ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 20,
+      reconnectionDelay: 1000,
+      timeout: 20000,
     });
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setConnected(true);
+      setSocketOk(true);
       setLobbyError(null);
     });
 
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('disconnect', () => {
+      setConnected(false);
+      setSocketOk(false);
+    });
 
     socket.on('rooms-list', ({ rooms, count }) => {
       setAvailableRooms(rooms || []);
@@ -133,10 +147,16 @@ export default function App() {
       });
     });
 
-    socket.on('connect_error', () => {
-      const onPhone = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+    socket.on('connect_error', (err) => {
+      setSocketOk(false);
+      const onPhone = isMobileDevice() || !['localhost', '127.0.0.1'].includes(window.location.hostname);
       if (onPhone) {
-        setLobbyError('Lost connection. Check same WiFi and that ./start.sh is running on the laptop.');
+        setLobbyError(
+          'Cannot connect. Ask the host to run ./start-phone.sh and send you the https:// link. Same WiFi? Use http://192.168.x.x:3847 not localhost.'
+        );
+        setShowManual(true);
+      } else {
+        setLobbyError(`Connection failed: ${err.message}. Run ./start.sh and keep terminal open.`);
       }
     });
 
@@ -145,9 +165,20 @@ export default function App() {
     return socket;
   }, [applyState]);
 
+  const connectToServer = useCallback((baseUrl) => {
+    const clean = baseUrl?.trim().replace(/\/$/, '');
+    if (!clean) return;
+    localStorage.setItem('nearby-server', clean);
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    window.location.href = clean;
+  }, []);
+
   useEffect(() => {
     const base = getServerUrl();
-    fetch(`${base}/api/info`)
+    fetch(`${base}/api/info`, { signal: AbortSignal.timeout(10000) })
       .then((r) => r.json())
       .then((info) => {
         setServerInfo(info);
@@ -158,8 +189,8 @@ export default function App() {
         const onPhone = !['localhost', '127.0.0.1'].includes(window.location.hostname);
         setLobbyError(
           onPhone
-            ? 'Cannot reach the app. On your laptop run ./start.sh, then open the http://192.168.x.x:3847 address shown in the terminal (not localhost). Phone and laptop must use the same WiFi.'
-            : 'Could not start. Run ./start.sh in the project folder and keep the terminal open.'
+            ? 'Cannot reach the app. Ask the host to run ./start-phone.sh on laptop and open the https:// link they send you.'
+            : 'Could not start. Run ./start.sh or ./start-phone.sh and keep the terminal open.'
         );
       });
 
@@ -174,8 +205,19 @@ export default function App() {
         .catch(() => {});
     }, 3000);
 
-    return () => clearInterval(poll);
-  }, [screen, setupSocket]);
+    const pollInfo = setInterval(() => {
+      if (screen !== 'lobby' && screen !== 'create') return;
+      fetch(`${getServerUrl()}/api/info`)
+        .then((r) => r.json())
+        .then((info) => setServerInfo(info))
+        .catch(() => {});
+    }, 2000);
+
+    return () => {
+      clearInterval(poll);
+      clearInterval(pollInfo);
+    };
+  }, [screen, setupSocket, connectToServer]);
 
   const leaveRoom = () => {
     socketRef.current?.emit('leave-room');
@@ -249,10 +291,12 @@ export default function App() {
   const hasIncoming = (id) => friendRequests.incoming.some((r) => r.from === id);
 
   const isHostComputer = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const phoneUrl = serverInfo?.phoneUrls?.[0] || null;
+  const phoneUrl = serverInfo?.bestPhoneUrl || serverInfo?.tunnelUrl || serverInfo?.phoneUrls?.[0] || null;
+  const isTunnel = Boolean(serverInfo?.tunnelUrl);
 
   const copyPhoneUrl = async () => {
-    if (!phoneUrl) return;
+    const url = phoneUrl;
+    if (!url) return;
     try {
       await navigator.clipboard.writeText(phoneUrl);
       setCopied(true);
@@ -282,10 +326,21 @@ export default function App() {
           <h1>Nearby</h1>
           <p className="tagline">Anonymous chat for people on the same WiFi</p>
 
-          <div className={`network-status ${networkReady ? 'online' : 'offline'}`}>
+          <div className={`network-status ${networkReady && socketOk ? 'online' : networkReady ? 'partial' : 'offline'}`}>
             <span className="dot" />
-            {networkReady ? 'Connected to local network' : 'Looking for network…'}
+            {!networkReady
+              ? 'Connecting…'
+              : socketOk
+                ? 'Connected — ready to chat'
+                : 'Server found, connecting live chat…'}
           </div>
+
+          {networkReady && (
+            <div className="status-checks">
+              <span className={networkReady ? 'ok' : ''}>App {networkReady ? '✓' : '…'}</span>
+              <span className={socketOk ? 'ok' : ''}>Live chat {socketOk ? '✓' : '…'}</span>
+            </div>
+          )}
 
           <label className="name-field">
             <span>Your anonymous name</span>
@@ -302,11 +357,31 @@ export default function App() {
           {isHostComputer && phoneUrl && screen === 'lobby' && (
             <div className="phone-help">
               <h3>📱 Open on your phone</h3>
-              <p>Same WiFi. Do <strong>not</strong> use localhost on the phone.</p>
+              {isTunnel ? (
+                <p>Works on <strong>any network</strong>. If you see a warning page, tap <strong>Continue</strong>.</p>
+              ) : (
+                <p>Same WiFi only. If it fails, run <code>./start-phone.sh</code> on laptop.</p>
+              )}
               <div className="phone-url-row">
                 <code>{phoneUrl}</code>
                 <button type="button" className="btn-copy" onClick={copyPhoneUrl}>
                   {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showManual && screen === 'lobby' && (
+            <div className="manual-connect">
+              <p><strong>Phone not connecting?</strong> Paste the link from the laptop:</p>
+              <div className="phone-url-row">
+                <input
+                  value={manualUrl}
+                  onChange={(e) => setManualUrl(e.target.value)}
+                  placeholder="https://xxxx.loca.lt or http://192.168.1.5:3847"
+                />
+                <button type="button" className="btn-copy" onClick={() => connectToServer(manualUrl)}>
+                  Go
                 </button>
               </div>
             </div>

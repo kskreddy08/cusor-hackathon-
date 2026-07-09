@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
@@ -36,12 +37,16 @@ function isIPv4(cfg) {
   return cfg.family === 'IPv4' || cfg.family === 4;
 }
 
+function isDockerIP(ip) {
+  return /^172\.(1[7-9]|2[0-9]|3[01])\./.test(ip);
+}
+
 function isPrivateIP(ip) {
   if (ip.startsWith('192.168.') || ip.startsWith('10.')) return true;
   const m = ip.match(/^172\.(\d+)\./);
   if (m) {
     const second = parseInt(m[1], 10);
-    return second >= 16 && second <= 31;
+    return second >= 16 && second <= 31 && !isDockerIP(ip);
   }
   return false;
 }
@@ -54,10 +59,19 @@ function getLocalIPs() {
       if (isIPv4(cfg) && !cfg.internal) ips.push(cfg.address);
     }
   }
-  return ips.sort((a, b) => {
-    const score = (ip) => (isPrivateIP(ip) ? 0 : 1);
-    return score(a) - score(b);
-  });
+  const wifiFirst = ips.filter((ip) => ip.startsWith('192.168.') || ip.startsWith('10.'));
+  const rest = ips.filter((ip) => !wifiFirst.includes(ip) && isPrivateIP(ip));
+  return [...wifiFirst, ...rest];
+}
+
+function getTunnelUrl() {
+  if (process.env.TUNNEL_URL) return process.env.TUNNEL_URL;
+  const file = path.join(__dirname, '..', 'tunnel-url.txt');
+  try {
+    return fs.readFileSync(file, 'utf8').trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 function getOrCreateRoom(roomId, displayName) {
@@ -346,14 +360,19 @@ app.get('/api/rooms', (_req, res) => {
 app.get('/api/info', (_req, res) => {
   const ips = getLocalIPs();
   const phoneUrls = ips.map((ip) => `http://${ip}:${PORT}`);
+  const tunnelUrl = getTunnelUrl();
   res.json({
     port: PORT,
     ips,
     phoneUrls,
+    tunnelUrl,
+    bestPhoneUrl: tunnelUrl || phoneUrls[0] || null,
     joinUrl: `http://localhost:${PORT}`,
-    phoneHint: phoneUrls[0]
-      ? `On your phone (same WiFi), open: ${phoneUrls[0]}`
-      : 'Connect phone to the same WiFi, then use your laptop IP with port 3847',
+    phoneHint: tunnelUrl
+      ? `Works on any network: ${tunnelUrl}`
+      : phoneUrls[0]
+        ? `Same WiFi only: ${phoneUrls[0]}`
+        : 'Run ./start-phone.sh for a link that works on any phone',
   });
 });
 
@@ -367,20 +386,23 @@ if (process.env.NODE_ENV === 'production') {
 
 server.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
+  const tunnelUrl = getTunnelUrl();
   console.log('\n  ╔══════════════════════════════════════════════╗');
   console.log('  ║  Nearby is running!                          ║');
   console.log('  ╚══════════════════════════════════════════════╝\n');
-  console.log(`  LAPTOP (this computer):  http://localhost:${PORT}`);
-  if (ips.length) {
-    console.log('\n  PHONE (same WiFi) — type this in Safari/Chrome:');
-    ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
-  } else {
-    console.log('\n  PHONE: could not detect WiFi IP automatically.');
-    console.log('  Mac: System Settings → Wi-Fi → Details → IP Address');
-    console.log('  Windows: cmd → ipconfig → IPv4 Address');
-    console.log(`  Then open: http://YOUR-IP:${PORT}`);
+  console.log(`  LAPTOP:  http://localhost:${PORT}`);
+  if (tunnelUrl) {
+    console.log('\n  📱 PHONE (any network — use this!):');
+    console.log(`  → ${tunnelUrl}`);
   }
-  console.log('\n  ⚠  Do NOT use "localhost" on your phone.');
-  console.log('  ⚠  Use ./start.sh (not npm run dev) for phone testing.');
+  if (ips.length) {
+    console.log('\n  📱 PHONE (same WiFi only):');
+    ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
+  }
+  if (!tunnelUrl && !ips.length) {
+    console.log('\n  📱 PHONE: run ./start-phone.sh for a shareable link');
+  }
+  console.log('\n  ⚠  localhost does NOT work on your phone.');
+  console.log('  ⚠  If same WiFi fails, use: ./start-phone.sh');
   console.log('  Keep this terminal open.\n');
 });

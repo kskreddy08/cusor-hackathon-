@@ -1,53 +1,50 @@
 # Nearby — Anonymous WiFi Chat
 
-## Start (use this every time)
+## Phone not working? Use this:
 
 ```bash
-npm run install:all   # first time only
+npm run install:all
+chmod +x start-phone.sh
+./start-phone.sh
+```
+
+It prints a link like `https://xxxx.loca.lt` — **open that on your phone**.  
+Works on any network. WiFi/mobile data both fine. No localhost.
+
+---
+
+## Laptop only (same WiFi)
+
+```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-**Keep the terminal open.**
-
-| Device | URL |
-|--------|-----|
-| Laptop | `http://localhost:3847` |
-| Phone (same WiFi) | `http://192.168.x.x:3847` from terminal output |
-
-**Never use `localhost` on your phone.**
+- Laptop: `http://localhost:3847`
+- Phone (same WiFi): `http://192.168.x.x:3847` from terminal
 
 ---
 
-## Test on laptop only (2 tabs)
+## How to know it's working
 
-1. Tab 1 → `http://localhost:3847` → **+ Create a room** → "Coffee chat"
-2. Tab 2 → same URL → **Join** Coffee chat
-3. Tab 1 → Open chat → type "Hello"
-4. Tab 2 → People → **+ Connect** → Tab 1 Accept → Messages
+On the app home screen you should see:
+- **App ✓**
+- **Live chat ✓**
 
----
-
-## Test on phone
-
-1. Run `./start.sh` on laptop
-2. Copy the `http://192.168.x.x:3847` URL from terminal (or tap **Copy** in the app)
-3. Paste in phone Safari/Chrome — **same WiFi**, mobile data off
-4. Join the same room as laptop
-
-### Still broken?
-
-- Use `./start.sh` not `npm run dev` for phone
-- Try phone hotspot: laptop + phone on hotspot, run `./start.sh` again
-- Mac firewall: allow Node.js incoming connections
-- Some café WiFi blocks device-to-device traffic
+Both green = working. Create a room on laptop, join on phone.
 
 ---
 
-## Verify server works
+## Test alone (2 tabs)
+
+1. `./start.sh`
+2. Two tabs at `http://localhost:3847`
+3. Tab 1 create room, Tab 2 join, chat
+
+---
+
+## Verify
 
 ```bash
-node scripts/test.mjs
+npm test
 ```
-
-Should print: `PASS: all smoke tests OK`

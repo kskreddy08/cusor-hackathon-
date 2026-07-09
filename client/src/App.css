@@ -93,8 +93,39 @@
   background: currentColor;
 }
 
-.network-status.online .dot {
-  box-shadow: 0 0 8px var(--success);
+.network-status.partial {
+  color: #eab308;
+}
+
+.status-checks {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.status-checks .ok {
+  color: var(--success);
+}
+
+.manual-connect {
+  background: var(--surface2);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.manual-connect p {
+  font-size: 13px;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.manual-connect input {
+  flex: 1;
+  font-size: 13px;
 }
 
 .name-field {
