@@ -30,6 +30,7 @@ function getServerUrl() {
 export default function App() {
   const [screen, setScreen] = useState('lobby'); // lobby | create | chat
   const [roomId, setRoomId] = useState('');
+  const [roomName, setRoomName] = useState('');
   const [roomLabel, setRoomLabel] = useState('');
   const [displayName, setDisplayName] = useState(() => randomName());
   const [myId, setMyId] = useState(null);
@@ -69,10 +70,14 @@ export default function App() {
   }, []);
 
   const setupSocket = useCallback(() => {
-    if (socketRef.current?.connected) return socketRef.current;
+    if (socketRef.current) return socketRef.current;
 
     const url = getServerUrl();
-    const socket = io(url || undefined, { transports: ['websocket', 'polling'] });
+    const socket = io(url || undefined, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+    });
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -92,12 +97,29 @@ export default function App() {
       }
     });
 
-    socket.on('joined', ({ userId, roomId: joinedRoom }) => {
+    socket.on('joined', ({ userId, roomId: joinedRoom, roomName: joinedName }) => {
       myIdRef.current = userId;
       setMyId(userId);
       setRoomId(joinedRoom);
+      setRoomName(joinedName || joinedRoom);
       setScreen('chat');
       setShowRoomsPopup(false);
+      setLobbyError(null);
+    });
+
+    socket.on('left-room', () => {
+      setScreen('lobby');
+      setRoomId('');
+      setRoomName('');
+      myIdRef.current = null;
+      setMyId(null);
+      setOpenMessages([]);
+      setUsers([]);
+      setFriends([]);
+      setFriendRequests({ incoming: [], outgoing: [] });
+      setDms({});
+      setDmWith(null);
+      setTab('open');
     });
 
     socket.on('state', (state) => {
@@ -105,14 +127,17 @@ export default function App() {
     });
 
     socket.on('open-message', (msg) => {
-      setOpenMessages((prev) => [...prev, msg]);
+      setOpenMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev;
+        return [...prev, msg];
+      });
     });
 
-    socket.on('dm-message', ({ withUserId, message }) => {
-      setDms((prev) => ({
-        ...prev,
-        [withUserId]: [...(prev[withUserId] || []), message],
-      }));
+    socket.on('connect_error', () => {
+      const onPhone = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+      if (onPhone) {
+        setLobbyError('Lost connection. Check same WiFi and that ./start.sh is running on the laptop.');
+      }
     });
 
     socket.on('error', ({ message }) => setLobbyError(message));
@@ -151,6 +176,10 @@ export default function App() {
 
     return () => clearInterval(poll);
   }, [screen, setupSocket]);
+
+  const leaveRoom = () => {
+    socketRef.current?.emit('leave-room');
+  };
 
   useEffect(() => {
     openEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -359,7 +388,7 @@ export default function App() {
 
   const dmUser = dmWith ? userById(dmWith) : null;
   const pendingCount = friendRequests.incoming.length;
-  const activeRoomName = availableRooms.find((r) => r.id === roomId)?.name || roomId;
+  const activeRoomName = roomName || availableRooms.find((r) => r.id === roomId)?.name || roomId;
 
   return (
     <div className="app">
@@ -368,8 +397,11 @@ export default function App() {
           <h1>Nearby</h1>
           <span className="room-badge">{activeRoomName}</span>
         </div>
-        <div className={`status ${connected ? 'on' : 'off'}`}>
-          {connected ? `${users.length} nearby` : 'Reconnecting…'}
+        <div className="header-right">
+          <div className={`status ${connected ? 'on' : 'off'}`}>
+            {connected ? `${users.length} nearby` : 'Reconnecting…'}
+          </div>
+          <button type="button" className="btn-leave" onClick={leaveRoom}>Leave</button>
         </div>
       </header>
 

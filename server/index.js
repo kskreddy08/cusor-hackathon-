@@ -14,22 +14,14 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*', methods: ['GET', 'POST'] },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
-// roomId -> { openMessages: [], users: Map<socketId, user> }
 const rooms = new Map();
-
-// userId -> { socketId, roomId, displayName, color }
 const usersById = new Map();
-
-// friendship: `${minId}:${maxId}` -> 'pending' | 'accepted' (scoped per room in key)
-function friendKey(roomId, a, b) {
-  const [x, y] = [a, b].sort();
-  return `${roomId}:${x}:${y}`;
-}
-
-const friendships = new Map(); // friendKey -> { status, from, to, intro? }
-const dmMessages = new Map(); // friendKey -> [{ id, from, text, at }]
+const friendships = new Map();
+const dmMessages = new Map();
 
 const COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316',
@@ -40,14 +32,32 @@ function pickColor() {
   return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
+function isIPv4(cfg) {
+  return cfg.family === 'IPv4' || cfg.family === 4;
+}
+
+function isPrivateIP(ip) {
+  if (ip.startsWith('192.168.') || ip.startsWith('10.')) return true;
+  const m = ip.match(/^172\.(\d+)\./);
+  if (m) {
+    const second = parseInt(m[1], 10);
+    return second >= 16 && second <= 31;
+  }
+  return false;
+}
+
 function getLocalIPs() {
   const ips = [];
   for (const iface of Object.values(os.networkInterfaces())) {
+    if (!iface) continue;
     for (const cfg of iface) {
-      if (cfg.family === 'IPv4' && !cfg.internal) ips.push(cfg.address);
+      if (isIPv4(cfg) && !cfg.internal) ips.push(cfg.address);
     }
   }
-  return ips;
+  return ips.sort((a, b) => {
+    const score = (ip) => (isPrivateIP(ip) ? 0 : 1);
+    return score(a) - score(b);
+  });
 }
 
 function getOrCreateRoom(roomId, displayName) {
@@ -59,6 +69,9 @@ function getOrCreateRoom(roomId, displayName) {
       users: new Map(),
       createdAt: Date.now(),
     });
+  } else if (displayName) {
+    const room = rooms.get(roomId);
+    room.displayName = displayName;
   }
   return rooms.get(roomId);
 }
@@ -81,6 +94,16 @@ function broadcastRoomsList() {
   io.emit('rooms-list', { rooms: list, count: list.length });
 }
 
+function friendKey(roomId, a, b) {
+  const [x, y] = [a, b].sort();
+  return `${roomId}::${x}::${y}`;
+}
+
+function parseFriendKey(key) {
+  const parts = key.split('::');
+  return { roomId: parts[0], a: parts[1], b: parts[2] };
+}
+
 function roomUserList(room) {
   return Array.from(room.users.values()).map((u) => ({
     id: u.id,
@@ -92,13 +115,10 @@ function roomUserList(room) {
 function getFriendsForUser(roomId, userId) {
   const friends = [];
   for (const [key, rel] of friendships) {
-    if (!key.startsWith(roomId + ':')) continue;
-    const parts = key.split(':');
-    const a = parts[1];
-    const b = parts[2];
-    if (rel.status === 'accepted' && (a === userId || b === userId)) {
-      const otherId = a === userId ? b : a;
-      friends.push(otherId);
+    const parsed = parseFriendKey(key);
+    if (parsed.roomId !== roomId) continue;
+    if (rel.status === 'accepted' && (parsed.a === userId || parsed.b === userId)) {
+      friends.push(parsed.a === userId ? parsed.b : parsed.a);
     }
   }
   return friends;
@@ -108,16 +128,12 @@ function getPendingRequests(roomId, userId) {
   const incoming = [];
   const outgoing = [];
   for (const [key, rel] of friendships) {
-    if (!key.startsWith(roomId + ':')) continue;
-    if (rel.status !== 'pending') continue;
+    const parsed = parseFriendKey(key);
+    if (parsed.roomId !== roomId || rel.status !== 'pending') continue;
     if (rel.to === userId) incoming.push({ from: rel.from, intro: rel.intro || '' });
     if (rel.from === userId) outgoing.push({ to: rel.to, intro: rel.intro || '' });
   }
   return { incoming, outgoing };
-}
-
-function dmKeyFor(roomId, a, b) {
-  return friendKey(roomId, a, b);
 }
 
 function serializeRoomState(roomId, room, userId) {
@@ -125,7 +141,7 @@ function serializeRoomState(roomId, room, userId) {
   const friends = getFriendsForUser(roomId, userId);
   const dms = {};
   for (const fid of friends) {
-    const key = dmKeyFor(roomId, userId, fid);
+    const key = friendKey(roomId, userId, fid);
     dms[fid] = dmMessages.get(key) || [];
   }
   return {
@@ -137,14 +153,33 @@ function serializeRoomState(roomId, room, userId) {
   };
 }
 
-function broadcastRoom(roomId, room, event, payload) {
+function emitStateToUser(socket, roomId, room, userId) {
+  if (socket) socket.emit('state', serializeRoomState(roomId, room, userId));
+}
+
+function syncRoom(roomId, room) {
   for (const u of room.users.values()) {
-    io.to(u.socketId).emit(event, payload);
+    emitStateToUser(io.sockets.sockets.get(u.socketId), roomId, room, u.id);
   }
 }
 
-function emitStateToUser(socket, roomId, room, userId) {
-  socket.emit('state', serializeRoomState(roomId, room, userId));
+function leaveCurrentRoom(socket, user, roomId) {
+  const room = rooms.get(roomId);
+  if (!room || !user) return;
+
+  room.users.delete(socket.id);
+  usersById.delete(user.id);
+
+  room.openMessages.push({
+    id: uuidv4(),
+    type: 'system',
+    text: `${user.displayName} left`,
+    at: Date.now(),
+  });
+
+  socket.leave(roomId);
+  syncRoom(roomId, room);
+  broadcastRoomsList();
 }
 
 io.on('connection', (socket) => {
@@ -163,15 +198,10 @@ io.on('connection', (socket) => {
     const cleanName = displayName.trim().slice(0, 24);
     const label = (roomLabel || roomId).trim().slice(0, 32);
 
-    if (currentUser) {
-      const oldRoom = rooms.get(currentRoomId);
-      if (oldRoom) {
-        oldRoom.users.delete(socket.id);
-        broadcastRoom(currentRoomId, oldRoom, 'user-left', { id: currentUser.id });
-        for (const u of oldRoom.users.values()) {
-          emitStateToUser(io.sockets.sockets.get(u.socketId), currentRoomId, oldRoom, u.id);
-        }
-      }
+    if (currentUser && currentRoomId) {
+      leaveCurrentRoom(socket, currentUser, currentRoomId);
+      currentUser = null;
+      currentRoomId = null;
     }
 
     const room = getOrCreateRoom(cleanRoom, label);
@@ -197,13 +227,18 @@ io.on('connection', (socket) => {
       at: Date.now(),
     });
 
-    socket.emit('joined', { userId: user.id, roomId: cleanRoom });
-
-    for (const u of room.users.values()) {
-      emitStateToUser(io.sockets.sockets.get(u.socketId), cleanRoom, room, u.id);
-    }
-
+    socket.emit('joined', { userId: user.id, roomId: cleanRoom, roomName: label });
+    syncRoom(cleanRoom, room);
     broadcastRoomsList();
+  });
+
+  socket.on('leave-room', () => {
+    if (!currentUser || !currentRoomId) return;
+    leaveCurrentRoom(socket, currentUser, currentRoomId);
+    currentUser = null;
+    currentRoomId = null;
+    socket.emit('left-room');
+    socket.emit('rooms-list', { rooms: listRooms(), count: listRooms().length });
   });
 
   socket.on('open-message', ({ text }) => {
@@ -223,7 +258,7 @@ io.on('connection', (socket) => {
     room.openMessages.push(msg);
     if (room.openMessages.length > 200) room.openMessages.shift();
 
-    broadcastRoom(currentRoomId, room, 'open-message', msg);
+    io.to(currentRoomId).emit('open-message', msg);
   });
 
   socket.on('friend-request', ({ toUserId, intro }) => {
@@ -236,8 +271,7 @@ io.on('connection', (socket) => {
 
     const key = friendKey(currentRoomId, currentUser.id, toUserId);
     const existing = friendships.get(key);
-    if (existing?.status === 'accepted') return;
-    if (existing?.status === 'pending') return;
+    if (existing?.status === 'accepted' || existing?.status === 'pending') return;
 
     friendships.set(key, {
       status: 'pending',
@@ -246,9 +280,7 @@ io.on('connection', (socket) => {
       intro: (intro || '').trim().slice(0, 200),
     });
 
-    for (const u of room.users.values()) {
-      emitStateToUser(io.sockets.sockets.get(u.socketId), currentRoomId, room, u.id);
-    }
+    syncRoom(currentRoomId, room);
   });
 
   socket.on('friend-respond', ({ fromUserId, accept }) => {
@@ -268,9 +300,7 @@ io.on('connection', (socket) => {
       friendships.delete(key);
     }
 
-    for (const u of room.users.values()) {
-      emitStateToUser(io.sockets.sockets.get(u.socketId), currentRoomId, room, u.id);
-    }
+    syncRoom(currentRoomId, room);
   });
 
   socket.on('dm-message', ({ toUserId, text }) => {
@@ -281,7 +311,7 @@ io.on('connection', (socket) => {
     const friends = getFriendsForUser(currentRoomId, currentUser.id);
     if (!friends.includes(toUserId)) return;
 
-    const key = dmKeyFor(currentRoomId, currentUser.id, toUserId);
+    const key = friendKey(currentRoomId, currentUser.id, toUserId);
     const msg = {
       id: uuidv4(),
       from: currentUser.id,
@@ -293,36 +323,19 @@ io.on('connection', (socket) => {
     list.push(msg);
     if (list.length > 200) list.shift();
 
-    const recipient = usersById.get(toUserId);
-    if (recipient?.roomId === currentRoomId) {
-      io.to(recipient.socketId).emit('dm-message', { withUserId: currentUser.id, message: msg });
-      emitStateToUser(io.sockets.sockets.get(recipient.socketId), currentRoomId, room, toUserId);
-    }
-    socket.emit('dm-message', { withUserId: toUserId, message: msg });
-    emitStateToUser(socket, currentRoomId, room, currentUser.id);
+    syncRoom(currentRoomId, room);
   });
 
   socket.on('disconnect', () => {
     if (!currentUser || !currentRoomId) return;
-    const room = rooms.get(currentRoomId);
-    if (!room) return;
-
-    room.users.delete(socket.id);
-    usersById.delete(currentUser.id);
-
-    room.openMessages.push({
-      id: uuidv4(),
-      type: 'system',
-      text: `${currentUser.displayName} left`,
-      at: Date.now(),
-    });
-
-    for (const u of room.users.values()) {
-      emitStateToUser(io.sockets.sockets.get(u.socketId), currentRoomId, room, u.id);
-    }
-
-    broadcastRoomsList();
+    leaveCurrentRoom(socket, currentUser, currentRoomId);
+    currentUser = null;
+    currentRoomId = null;
   });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, rooms: listRooms().length });
 });
 
 app.get('/api/rooms', (_req, res) => {
@@ -340,7 +353,7 @@ app.get('/api/info', (_req, res) => {
     joinUrl: `http://localhost:${PORT}`,
     phoneHint: phoneUrls[0]
       ? `On your phone (same WiFi), open: ${phoneUrls[0]}`
-      : 'Connect phone to the same WiFi, then use your laptop IP address with port 3847',
+      : 'Connect phone to the same WiFi, then use your laptop IP with port 3847',
   });
 });
 
@@ -362,10 +375,12 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('\n  PHONE (same WiFi) — type this in Safari/Chrome:');
     ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
   } else {
-    console.log('\n  PHONE: could not detect WiFi IP.');
-    console.log('  Find your laptop IP in WiFi settings, then open:');
-    console.log(`  → http://YOUR-LAPTOP-IP:${PORT}`);
+    console.log('\n  PHONE: could not detect WiFi IP automatically.');
+    console.log('  Mac: System Settings → Wi-Fi → Details → IP Address');
+    console.log('  Windows: cmd → ipconfig → IPv4 Address');
+    console.log(`  Then open: http://YOUR-IP:${PORT}`);
   }
-  console.log('\n  Do NOT type "localhost" on your phone — it will not work.');
-  console.log('  Keep this terminal open while testing.\n');
+  console.log('\n  ⚠  Do NOT use "localhost" on your phone.');
+  console.log('  ⚠  Use ./start.sh (not npm run dev) for phone testing.');
+  console.log('  Keep this terminal open.\n');
 });

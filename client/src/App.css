@@ -387,6 +387,26 @@
   border-bottom: 1px solid var(--border);
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-leave {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.btn-leave:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .header h1 {
   font-size: 20px;
   font-weight: 700;
