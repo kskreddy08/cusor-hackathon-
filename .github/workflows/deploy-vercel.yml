@@ -17,7 +17,7 @@ jobs:
       - name: Install and build
         env:
           VITE_UNIVERSAL: 'true'
-          VITE_UNIVERSAL_LINK: https://nearby-chat.vercel.app
+          VITE_UNIVERSAL_LINK: https://nearby-chat-weld.vercel.app
         run: |
           npm run install:all
           cd client && VITE_UNIVERSAL=true npm run build

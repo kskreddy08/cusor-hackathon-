@@ -16,13 +16,7 @@
 **Live now:**
 
 ```
-https://kskreddy08.github.io/cusor-hackathon-
-```
-
-Optional Vercel URL (after you import the repo in Vercel):
-
-```
-https://nearby-chat.vercel.app
+https://nearby-chat-weld.vercel.app
 ```
 
 One URL for the whole world. When someone opens it:
