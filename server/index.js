@@ -415,7 +415,12 @@ io.on('connection', (socket) => {
 });
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, rooms: listRooms().length });
+  res.json({
+    ok: true,
+    rooms: listRooms().length,
+    lounge: PUBLIC_LOUNGE_ID,
+    loungeName: PUBLIC_LOUNGE_NAME,
+  });
 });
 
 app.get('/api/rooms', (_req, res) => {

@@ -2,6 +2,10 @@ const PORT = 3847;
 
 const CLOUD_HOSTS = ['.vercel.app', '.github.io', '.pages.dev', '.netlify.app', '.fly.dev'];
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** True when opened from the public universal link (HTTPS cloud page, not the local host). */
 export function isUniversalOrigin() {
   if (import.meta.env.VITE_UNIVERSAL === 'true') return true;
@@ -138,6 +142,36 @@ export async function discoverServer(onProgress) {
   }
 
   return null;
+}
+
+/**
+ * Universal link (HTTPS) cannot reliably fetch local http:// IPs — browsers block it.
+ * Top-level navigation to local HTTP works, so try that before subnet scanning.
+ */
+export async function discoverFromUniversalLink(onProgress) {
+  const saved = localStorage.getItem('nearby-server');
+  const cleanSaved = saved?.replace(/\/$/, '');
+
+  if (cleanSaved && cleanSaved.startsWith('http://') && !cleanSaved.includes('loca.lt')) {
+    onProgress?.('Reconnecting to your WiFi…');
+    const hit = await checkServer(cleanSaved);
+    if (hit) return hit;
+  }
+
+  const jumpTargets = [];
+  if (cleanSaved && cleanSaved.startsWith('http://') && !cleanSaved.includes('loca.lt')) {
+    jumpTargets.push(cleanSaved);
+  }
+  jumpTargets.push(`http://nearby.local:${PORT}`);
+
+  for (const target of jumpTargets) {
+    onProgress?.('Opening Nearby on this WiFi…');
+    window.location.replace(target);
+    await wait(2000);
+  }
+
+  onProgress?.('Scanning your WiFi…');
+  return discoverServer(onProgress);
 }
 
 export function saveServer(url) {

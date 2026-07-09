@@ -1,17 +1,18 @@
 # Nearby — Same WiFi Chat
 
-**One universal link. Tap it on any WiFi — see live rooms on that network.**
+**One universal link. Tap it on any WiFi — Open Lounge is always there when someone hosts.**
 
 ## How it works
 
 ```
-1. One person on a WiFi runs ./start.sh (hosts for that network)
-2. Share the universal link with everyone on the same WiFi
-3. They tap the link → app scans the network → shows live rooms → join or create
-4. **Open Lounge** is always available on each WiFi — anyone can jump in
-5. **Host a room** and keep it always visible (public) so others can find it anytime
-6. Different WiFi = different rooms (café ≠ home ≠ office)
+1. One person on a WiFi runs ./start.sh  ← this powers chat for that network
+2. Share: https://nearby-chat-weld.vercel.app
+3. Anyone opens the link → connects to that WiFi's host → sees Open Lounge (always on)
+4. They can join Open Lounge or host their own room
+5. Different WiFi = different network = separate rooms
 ```
+
+**Important:** Vercel is only the front door (the link). Chat rooms live on the WiFi host (`./start.sh`), not in the cloud. Every hosted WiFi always has **Open Lounge** ready to join.
 
 ## The universal link (share everywhere)
 

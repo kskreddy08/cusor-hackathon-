@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { discoverServer, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink } from './discover';
+import { discoverServer, discoverFromUniversalLink, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink } from './discover';
+import { PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME, withPublicLounge, roomListCount } from './rooms';
 import './App.css';
 
 const ADJECTIVES = ['Blue', 'Swift', 'Calm', 'Bold', 'Bright', 'Cool', 'Wild', 'Zen', 'Lucky', 'Neon'];
@@ -20,9 +21,6 @@ function formatTime(ts) {
 function slugify(text) {
   return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
 }
-
-const PUBLIC_LOUNGE_ID = 'public-lounge';
-const PUBLIC_LOUNGE_NAME = 'Open Lounge';
 
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
@@ -53,8 +51,8 @@ export default function App() {
   const [requestIntro, setRequestIntro] = useState('');
   const [networkReady, setNetworkReady] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [availableRooms, setAvailableRooms] = useState([]);
-  const [roomCount, setRoomCount] = useState(0);
+  const [availableRooms, setAvailableRooms] = useState(() => withPublicLounge([]));
+  const [roomCount, setRoomCount] = useState(1);
   const [showRoomsPopup, setShowRoomsPopup] = useState(false);
   const [lobbyError, setLobbyError] = useState(null);
   const [serverInfo, setServerInfo] = useState(null);
@@ -64,6 +62,12 @@ export default function App() {
   const [showManual, setShowManual] = useState(false);
   const [scanStatus, setScanStatus] = useState('Connecting to your WiFi…');
   const [serverBase, setServerBase] = useState(null);
+
+  const applyRooms = useCallback((rooms) => {
+    const next = withPublicLounge(rooms);
+    setAvailableRooms(next);
+    setRoomCount(roomListCount(rooms));
+  }, []);
 
   const socketRef = useRef(null);
   const myIdRef = useRef(null);
@@ -100,10 +104,7 @@ export default function App() {
       const base = getServerUrl();
       fetch(`${base}/api/rooms`)
         .then((r) => r.json())
-        .then(({ rooms, count }) => {
-          setAvailableRooms(rooms || []);
-          setRoomCount(count ?? rooms?.length ?? 0);
-        })
+        .then(({ rooms }) => applyRooms(rooms))
         .catch(() => {});
     });
 
@@ -112,9 +113,8 @@ export default function App() {
       setSocketOk(false);
     });
 
-    socket.on('rooms-list', ({ rooms, count }) => {
-      setAvailableRooms(rooms || []);
-      setRoomCount(count ?? rooms?.length ?? 0);
+    socket.on('rooms-list', ({ rooms }) => {
+      applyRooms(rooms);
       if (!popupShownRef.current) {
         setShowRoomsPopup(true);
         popupShownRef.current = true;
@@ -159,10 +159,7 @@ export default function App() {
       popupShownRef.current = false;
       fetch(`${getServerUrl()}/api/rooms`)
         .then((r) => r.json())
-        .then(({ rooms, count }) => {
-          setAvailableRooms(rooms || []);
-          setRoomCount(count ?? rooms?.length ?? 0);
-        })
+        .then(({ rooms }) => applyRooms(rooms))
         .catch(() => {});
     });
 
@@ -186,7 +183,7 @@ export default function App() {
     socket.on('error', ({ message }) => setLobbyError(message));
 
     return socket;
-  }, [applyState]);
+  }, [applyState, applyRooms]);
 
   const connectToServer = useCallback((baseUrl) => {
     const clean = baseUrl?.trim().replace(/\/$/, '');
@@ -208,9 +205,10 @@ export default function App() {
     let base = null;
 
     if (universal) {
-      setScreen('scanning');
-      setScanStatus('Finding Nearby on your WiFi…');
-      base = await discoverServer(setScanStatus);
+      setScreen('lobby');
+      applyRooms([]);
+      setScanStatus('Connecting to your WiFi…');
+      base = await discoverFromUniversalLink(setScanStatus);
     } else {
       const current = getServerUrl();
       base = await checkServer(current);
@@ -227,8 +225,11 @@ export default function App() {
     }
 
     if (!base) {
-      setScreen('no-host');
+      setScreen('lobby');
+      applyRooms([]);
+      setNetworkReady(false);
       setLobbyLoading(false);
+      setLobbyError('No WiFi host yet. Someone on this network must run ./start.sh — then Open Lounge appears here.');
       return;
     }
 
@@ -248,17 +249,18 @@ export default function App() {
         fetch(`${base}/api/rooms`, { signal: AbortSignal.timeout(10000) }).then((r) => r.json()),
       ]);
       setServerInfo(info);
-      setAvailableRooms(roomsData.rooms || []);
-      setRoomCount(roomsData.count ?? roomsData.rooms?.length ?? 0);
+      applyRooms(roomsData.rooms);
       setNetworkReady(true);
       setLobbyLoading(false);
       setupSocket();
     } catch {
-      setScreen('no-host');
+      setScreen('lobby');
+      applyRooms([]);
+      setNetworkReady(false);
       setLobbyLoading(false);
-      setLobbyError('Could not load rooms. Someone on this WiFi must run ./start.sh first.');
+      setLobbyError('Could not reach this WiFi host. Run ./start.sh on a laptop here, then open the link again.');
     }
-  }, [setupSocket]);
+  }, [setupSocket, applyRooms]);
 
   useEffect(() => {
     initNetwork();
@@ -270,14 +272,11 @@ export default function App() {
       if (screen !== 'lobby' && screen !== 'create') return;
       fetch(`${base}/api/rooms`)
         .then((r) => r.json())
-        .then(({ rooms, count }) => {
-          setAvailableRooms(rooms || []);
-          setRoomCount(count ?? rooms?.length ?? 0);
-        })
+        .then(({ rooms }) => applyRooms(rooms))
         .catch(() => {});
     }, 2000);
     return () => clearInterval(poll);
-  }, [screen, serverBase]);
+  }, [screen, serverBase, applyRooms]);
 
   const leaveRoom = () => {
     socketRef.current?.emit('leave-room');
@@ -295,6 +294,10 @@ export default function App() {
     const name = displayName.trim();
     if (!name) {
       setLobbyError('Pick an anonymous name first.');
+      return;
+    }
+    if (!networkReady) {
+      setLobbyError('Still connecting to your WiFi… wait a moment and try again.');
       return;
     }
     const socket = setupSocket();
@@ -470,28 +473,41 @@ export default function App() {
 
           {screen === 'lobby' && (
             <>
+              {!networkReady && (
+                <div className="connecting-banner">
+                  <div className="spinner sm" />
+                  <div>
+                    <strong>{scanStatus || 'Connecting to your WiFi…'}</strong>
+                    <p>Open Lounge is always here — connecting to the host on this network.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="rooms-section rooms-hero">
                 <div className="rooms-header">
                   <h2>Live rooms</h2>
                   <span className="room-count-pill">{lobbyLoading ? '…' : `${roomCount} now`}</span>
                 </div>
 
-                {!lobbyLoading && availableRooms.some((r) => r.id === PUBLIC_LOUNGE_ID) && (
-                  <div className="public-lounge-card">
-                    <div>
-                      <strong>{PUBLIC_LOUNGE_NAME}</strong>
-                      <span className="room-pill default">Always open</span>
-                      <p className="hint-small">Public room on this WiFi — jump in anytime.</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn-join btn-join-lounge"
-                      onClick={() => joinRoom(PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME)}
-                    >
-                      Join lounge
-                    </button>
+                <div className={`public-lounge-card${networkReady ? '' : ' waiting'}`}>
+                  <div>
+                    <strong>{PUBLIC_LOUNGE_NAME}</strong>
+                    <span className="room-pill default">Always open</span>
+                    <p className="hint-small">
+                      {networkReady
+                        ? 'Public room on this WiFi — jump in anytime.'
+                        : 'Waiting for a host on this WiFi (someone runs ./start.sh).'}
+                    </p>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    className="btn-join btn-join-lounge"
+                    disabled={!networkReady || lobbyLoading}
+                    onClick={() => joinRoom(PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME)}
+                  >
+                    {networkReady ? 'Join lounge' : 'Connecting…'}
+                  </button>
+                </div>
 
                 {lobbyLoading ? (
                   <div className="empty-rooms loading-rooms">
@@ -542,10 +558,30 @@ export default function App() {
               <button
                 type="button"
                 className="btn-primary btn-create"
+                disabled={!networkReady}
                 onClick={() => setScreen('create')}
               >
                 + Host a room
               </button>
+
+              {!networkReady && (
+                <div className="manual-connect" style={{ marginTop: 16 }}>
+                  <p>On this WiFi already? Paste the host link:</p>
+                  <div className="phone-url-row">
+                    <input
+                      value={manualUrl}
+                      onChange={(e) => setManualUrl(e.target.value)}
+                      placeholder="http://nearby.local:3847"
+                    />
+                    <button type="button" className="btn-copy" onClick={() => connectToServer(manualUrl)}>
+                      Go
+                    </button>
+                  </div>
+                  <button type="button" className="btn-linkish" onClick={() => initNetwork()}>
+                    Scan WiFi again
+                  </button>
+                </div>
+              )}
             </>
           )}
 
