@@ -1,0 +1,30 @@
+name: Deploy to Vercel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build
+        env:
+          VITE_UNIVERSAL: 'true'
+          VITE_UNIVERSAL_LINK: https://nearby-chat.vercel.app
+        run: |
+          npm run install:all
+          cd client && VITE_UNIVERSAL=true npm run build
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npm i -g vercel@55
+          vercel deploy client/dist --prod --yes --name nearby-chat --token="$VERCEL_TOKEN"

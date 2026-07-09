@@ -1,0 +1,7 @@
+{
+  "installCommand": "npm run install:all",
+  "buildCommand": "VITE_UNIVERSAL=true VITE_UNIVERSAL_LINK=https://nearby-chat.vercel.app npm run build:universal",
+  "outputDirectory": "client/dist",
+  "framework": null,
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

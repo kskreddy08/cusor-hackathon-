@@ -1,0 +1,30 @@
+{
+  "name": "nearby-chat",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node server/index.js",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "build:universal": "cd client && VITE_UNIVERSAL=true npm run build",
+    "start": "NODE_ENV=production node server/index.js",
+    "start:phone": "bash start-phone.sh",
+    "test": "node scripts/test.mjs",
+    "test:ui": "node scripts/test-ui.mjs",
+    "install:all": "npm install && cd client && npm install"
+  },
+  "dependencies": {
+    "bonjour-service": "^1.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "localtunnel": "^2.0.2",
+    "socket.io": "^4.8.1",
+    "uuid": "^11.0.5"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "playwright": "^1.61.1",
+    "socket.io-client": "^4.8.1"
+  }
+}

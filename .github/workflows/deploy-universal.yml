@@ -1,0 +1,45 @@
+name: Deploy universal link
+
+on:
+  push:
+    branches: [main, cursor/wifi-local-chat-4617]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build universal client
+        env:
+          VITE_UNIVERSAL: 'true'
+          VITE_BASE: /cusor-hackathon-/
+          VITE_UNIVERSAL_LINK: https://kskreddy08.github.io/cusor-hackathon-
+        run: |
+          npm run install:all
+          npm run build:universal
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: client/dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
