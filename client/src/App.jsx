@@ -218,7 +218,7 @@ export default function App() {
       if (!base) {
         setNetworkReady(false);
         setLobbyLoading(false);
-        setLobbyError('Live server waking up… try again in 30 seconds.');
+        setLobbyError('Live server is offline. Use the direct link below or try again.');
         return;
       }
 
@@ -244,7 +244,7 @@ export default function App() {
       } catch {
         setNetworkReady(false);
         setLobbyLoading(false);
-        setLobbyError('Live server waking up… refresh in a moment.');
+        setLobbyError('Could not reach live server. Tap Try again.');
       }
       return;
     }
