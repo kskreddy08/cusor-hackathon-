@@ -21,6 +21,9 @@ function slugify(text) {
   return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
 }
 
+const PUBLIC_LOUNGE_ID = 'public-lounge';
+const PUBLIC_LOUNGE_NAME = 'Open Lounge';
+
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
@@ -31,6 +34,10 @@ export default function App() {
   const [roomId, setRoomId] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomLabel, setRoomLabel] = useState('');
+  const [keepPublic, setKeepPublic] = useState(true);
+  const [isRoomHost, setIsRoomHost] = useState(false);
+  const [roomPersistent, setRoomPersistent] = useState(false);
+  const [isDefaultRoom, setIsDefaultRoom] = useState(false);
   const [displayName, setDisplayName] = useState(() => randomName());
   const [myId, setMyId] = useState(null);
   const [users, setUsers] = useState([]);
@@ -115,20 +122,31 @@ export default function App() {
       }
     });
 
-    socket.on('joined', ({ userId, roomId: joinedRoom, roomName: joinedName }) => {
+    socket.on('joined', ({ userId, roomId: joinedRoom, roomName: joinedName, isHost, persistent, isDefault }) => {
       myIdRef.current = userId;
       setMyId(userId);
       setRoomId(joinedRoom);
       setRoomName(joinedName || joinedRoom);
+      setIsRoomHost(!!isHost);
+      setRoomPersistent(!!persistent);
+      setIsDefaultRoom(!!isDefault);
       setScreen('chat');
       setShowRoomsPopup(false);
       setLobbyError(null);
+    });
+
+    socket.on('room-meta', ({ persistent, isHost }) => {
+      setRoomPersistent(!!persistent);
+      setIsRoomHost(!!isHost);
     });
 
     socket.on('left-room', () => {
       setScreen('lobby');
       setRoomId('');
       setRoomName('');
+      setIsRoomHost(false);
+      setRoomPersistent(false);
+      setIsDefaultRoom(false);
       myIdRef.current = null;
       setMyId(null);
       setOpenMessages([]);
@@ -273,7 +291,7 @@ export default function App() {
     dmEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [dms, dmWith]);
 
-  const joinRoom = (targetRoomId, targetLabel) => {
+  const joinRoom = (targetRoomId, targetLabel, options = {}) => {
     const name = displayName.trim();
     if (!name) {
       setLobbyError('Pick an anonymous name first.');
@@ -285,10 +303,16 @@ export default function App() {
         roomId: targetRoomId,
         displayName: name,
         roomLabel: targetLabel || targetRoomId,
+        keepPublic: !!options.keepPublic,
       });
     };
     if (socket.connected) doJoin();
     else socket.once('connect', doJoin);
+  };
+
+  const toggleRoomPublic = (next) => {
+    setRoomPersistent(next);
+    socketRef.current?.emit('set-room-public', { keepPublic: next });
   };
 
   const handleCreateRoom = (e) => {
@@ -296,7 +320,7 @@ export default function App() {
     const label = roomLabel.trim();
     if (!label) return;
     const id = slugify(label) || `room-${Date.now()}`;
-    joinRoom(id, label);
+    joinRoom(id, label, { keepPublic });
   };
 
   const sendOpen = (e) => {
@@ -418,7 +442,7 @@ export default function App() {
         <div className="join-card lobby-card">
           <div className="logo">📡</div>
           <h1>Nearby</h1>
-          <p className="tagline">Open link · same WiFi only · live rooms</p>
+          <p className="tagline">Open link · host or join · same WiFi only</p>
 
           <div className="wifi-scope-banner">
             <span className="wifi-icon">📶</span>
@@ -452,23 +476,43 @@ export default function App() {
                   <span className="room-count-pill">{lobbyLoading ? '…' : `${roomCount} now`}</span>
                 </div>
 
+                {!lobbyLoading && availableRooms.some((r) => r.id === PUBLIC_LOUNGE_ID) && (
+                  <div className="public-lounge-card">
+                    <div>
+                      <strong>{PUBLIC_LOUNGE_NAME}</strong>
+                      <span className="room-pill default">Always open</span>
+                      <p className="hint-small">Public room on this WiFi — jump in anytime.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-join btn-join-lounge"
+                      onClick={() => joinRoom(PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME)}
+                    >
+                      Join lounge
+                    </button>
+                  </div>
+                )}
+
                 {lobbyLoading ? (
                   <div className="empty-rooms loading-rooms">
                     <div className="spinner sm" />
                     <p>Loading rooms on this WiFi…</p>
                   </div>
-                ) : availableRooms.length === 0 ? (
+                ) : availableRooms.filter((r) => r.id !== PUBLIC_LOUNGE_ID).length === 0 ? (
                   <div className="empty-rooms">
-                    <p>No rooms yet — start one below.</p>
-                    <p className="hint-small">Everyone who opens this link on the same WiFi will see it.</p>
+                    <p>No hosted rooms yet — start one below or join the lounge.</p>
+                    <p className="hint-small">Hosts can keep a room always visible on this WiFi.</p>
                   </div>
                 ) : (
                   <ul className="room-list">
-                    {availableRooms.map((room) => (
-                      <li key={room.id} className="room-item">
+                    {availableRooms.filter((r) => r.id !== PUBLIC_LOUNGE_ID).map((room) => (
+                      <li key={room.id} className={`room-item${room.isPublic ? ' room-public' : ''}`}>
                         <div className="room-info">
                           <strong>{room.name}</strong>
-                          <span>{room.userCount} {room.userCount === 1 ? 'person' : 'people'} online</span>
+                          <div className="room-meta-row">
+                            {room.isPublic && <span className="room-pill">Always open</span>}
+                            <span>{room.userCount} {room.userCount === 1 ? 'person' : 'people'} online</span>
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -500,13 +544,14 @@ export default function App() {
                 className="btn-primary btn-create"
                 onClick={() => setScreen('create')}
               >
-                + Create a room
+                + Host a room
               </button>
             </>
           )}
 
           {screen === 'create' && (
             <form onSubmit={handleCreateRoom} className="create-form">
+              <p className="create-intro">Host a room others on this WiFi can find and join.</p>
               <label>
                 <span>Room name</span>
                 <input
@@ -518,9 +563,17 @@ export default function App() {
                   maxLength={32}
                 />
               </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={keepPublic}
+                  onChange={(e) => setKeepPublic(e.target.checked)}
+                />
+                <span>Keep this room always visible on this WiFi (public host)</span>
+              </label>
               <div className="create-actions">
                 <button type="button" onClick={() => setScreen('lobby')}>Back</button>
-                <button type="submit" className="btn-primary">Create & join</button>
+                <button type="submit" className="btn-primary">Host & join</button>
               </div>
             </form>
           )}
@@ -541,6 +594,17 @@ export default function App() {
           <span className="room-badge">{activeRoomName}</span>
         </div>
         <div className="header-right">
+          {isRoomHost && !isDefaultRoom && (
+            <label className="host-toggle" title="Keep this room listed even when empty">
+              <input
+                type="checkbox"
+                checked={roomPersistent}
+                onChange={(e) => toggleRoomPublic(e.target.checked)}
+              />
+              <span>Public room</span>
+            </label>
+          )}
+          {isDefaultRoom && <span className="host-badge">Public lounge</span>}
           <div className={`status ${connected ? 'on' : 'off'}`}>
             {connected ? `${users.length} nearby` : 'Reconnecting…'}
           </div>

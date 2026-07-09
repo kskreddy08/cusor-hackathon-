@@ -8,6 +8,8 @@ const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 3847;
 const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://nearby-chat-weld.vercel.app').replace(/\/$/, '');
+const PUBLIC_LOUNGE_ID = 'public-lounge';
+const PUBLIC_LOUNGE_NAME = 'Open Lounge';
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -68,7 +70,7 @@ function getTunnelUrl() {
   return null; // tunnels disabled — same WiFi only
 }
 
-function getOrCreateRoom(roomId, displayName) {
+function getOrCreateRoom(roomId, displayName, opts = {}) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, {
       id: roomId,
@@ -76,25 +78,57 @@ function getOrCreateRoom(roomId, displayName) {
       openMessages: [],
       users: new Map(),
       createdAt: Date.now(),
+      persistent: !!opts.persistent,
+      isDefault: !!opts.isDefault,
+      hostUserId: opts.hostUserId || null,
     });
-  } else if (displayName) {
+  } else {
     const room = rooms.get(roomId);
-    room.displayName = displayName;
+    if (displayName) room.displayName = displayName;
+    if (opts.persistent) room.persistent = true;
+    if (opts.hostUserId) room.hostUserId = opts.hostUserId;
   }
   return rooms.get(roomId);
 }
 
-function listRooms() {
+function ensureDefaultRooms() {
+  getOrCreateRoom(PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME, {
+    persistent: true,
+    isDefault: true,
+  });
+}
+
+function roomIsListed(room) {
   const now = Date.now();
+  return (
+    room.isDefault
+    || room.persistent
+    || room.users.size > 0
+    || now - room.createdAt < 60 * 60 * 1000
+  );
+}
+
+function serializeRoomListing(room) {
+  return {
+    id: room.id,
+    name: room.displayName,
+    userCount: room.users.size,
+    createdAt: room.createdAt,
+    persistent: !!room.persistent,
+    isDefault: !!room.isDefault,
+    isPublic: !!(room.persistent || room.isDefault),
+  };
+}
+
+function listRooms() {
   return Array.from(rooms.values())
-    .filter((r) => r.users.size > 0 || now - r.createdAt < 60 * 60 * 1000)
-    .map((r) => ({
-      id: r.id,
-      name: r.displayName,
-      userCount: r.users.size,
-      createdAt: r.createdAt,
-    }))
-    .sort((a, b) => b.userCount - a.userCount || b.createdAt - a.createdAt);
+    .filter(roomIsListed)
+    .map(serializeRoomListing)
+    .sort((a, b) => {
+      if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
+      if (a.persistent !== b.persistent) return a.persistent ? -1 : 1;
+      return b.userCount - a.userCount || b.createdAt - a.createdAt;
+    });
 }
 
 function broadcastRoomsList() {
@@ -175,8 +209,13 @@ function leaveCurrentRoom(socket, user, roomId) {
   const room = rooms.get(roomId);
   if (!room || !user) return;
 
+  const wasHost = room.hostUserId === user.id;
   room.users.delete(socket.id);
   usersById.delete(user.id);
+
+  if (wasHost && room.users.size === 0 && !room.persistent && !room.isDefault) {
+    room.hostUserId = null;
+  }
 
   room.openMessages.push({
     id: uuidv4(),
@@ -190,13 +229,15 @@ function leaveCurrentRoom(socket, user, roomId) {
   broadcastRoomsList();
 }
 
+ensureDefaultRooms();
+
 io.on('connection', (socket) => {
   let currentUser = null;
   let currentRoomId = null;
 
   socket.emit('rooms-list', { rooms: listRooms(), count: listRooms().length });
 
-  socket.on('join', ({ roomId, displayName, roomLabel }) => {
+  socket.on('join', ({ roomId, displayName, roomLabel, keepPublic }) => {
     if (!roomId || !displayName?.trim()) {
       socket.emit('error', { message: 'Room and display name are required.' });
       return;
@@ -205,6 +246,7 @@ io.on('connection', (socket) => {
     const cleanRoom = roomId.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-').slice(0, 32);
     const cleanName = displayName.trim().slice(0, 24);
     const label = (roomLabel || roomId).trim().slice(0, 32);
+    const wantsPublic = !!keepPublic;
 
     if (currentUser && currentRoomId) {
       leaveCurrentRoom(socket, currentUser, currentRoomId);
@@ -212,7 +254,10 @@ io.on('connection', (socket) => {
       currentRoomId = null;
     }
 
-    const room = getOrCreateRoom(cleanRoom, label);
+    const isNewRoom = !rooms.has(cleanRoom);
+    const room = getOrCreateRoom(cleanRoom, label, {
+      persistent: wantsPublic && cleanRoom !== PUBLIC_LOUNGE_ID,
+    });
     const user = {
       id: uuidv4(),
       socketId: socket.id,
@@ -220,6 +265,11 @@ io.on('connection', (socket) => {
       color: pickColor(),
       joinedAt: Date.now(),
     };
+
+    if (wantsPublic && !room.isDefault && (isNewRoom || !room.hostUserId)) {
+      room.persistent = true;
+      room.hostUserId = user.id;
+    }
 
     currentUser = user;
     currentRoomId = cleanRoom;
@@ -235,9 +285,31 @@ io.on('connection', (socket) => {
       at: Date.now(),
     });
 
-    socket.emit('joined', { userId: user.id, roomId: cleanRoom, roomName: label });
+    socket.emit('joined', {
+      userId: user.id,
+      roomId: cleanRoom,
+      roomName: label,
+      isHost: room.hostUserId === user.id,
+      persistent: !!room.persistent,
+      isDefault: !!room.isDefault,
+    });
     syncRoom(cleanRoom, room);
     broadcastRoomsList();
+  });
+
+  socket.on('set-room-public', ({ keepPublic }) => {
+    if (!currentUser || !currentRoomId) return;
+    const room = rooms.get(currentRoomId);
+    if (!room || room.isDefault) return;
+    if (room.hostUserId !== currentUser.id) return;
+
+    room.persistent = !!keepPublic;
+    broadcastRoomsList();
+    io.to(currentRoomId).emit('room-meta', {
+      roomId: currentRoomId,
+      persistent: room.persistent,
+      isHost: true,
+    });
   });
 
   socket.on('leave-room', () => {
@@ -399,5 +471,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  → ${lanName}   ← bookmark on this WiFi`);
   ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
   console.log('\n  One person runs ./start.sh. Everyone else just opens the link.');
+  console.log(`  Public lounge "${PUBLIC_LOUNGE_NAME}" is always open on this WiFi.`);
   console.log('  Keep this terminal open.\n');
 });
