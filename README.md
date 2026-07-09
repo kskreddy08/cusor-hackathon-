@@ -8,7 +8,9 @@
 1. One person on a WiFi runs ./start.sh (hosts for that network)
 2. Share the universal link with everyone on the same WiFi
 3. They tap the link → app scans the network → shows live rooms → join or create
-4. Different WiFi = different rooms (café ≠ home ≠ office)
+4. **Open Lounge** is always available on each WiFi — anyone can jump in
+5. **Host a room** and keep it always visible (public) so others can find it anytime
+6. Different WiFi = different rooms (café ≠ home ≠ office)
 ```
 
 ## The universal link (share everywhere)
