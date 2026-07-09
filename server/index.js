@@ -11,6 +11,19 @@ const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://nearby-chat-weld.
 const PUBLIC_LOUNGE_ID = 'public-lounge';
 const PUBLIC_LOUNGE_NAME = 'Open Lounge';
 const app = express();
+
+// Lets HTTPS pages (Vercel link) reach this local server — required on Chrome/Android.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 

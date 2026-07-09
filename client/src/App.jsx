@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
-import { discoverServer, discoverFromUniversalLink, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink } from './discover';
+import { discoverServer, discoverFromUniversalLink, checkServer, saveServer, getServerUrl, isUniversalOrigin, getUniversalLink, jumpToLocalHost } from './discover';
 import { PUBLIC_LOUNGE_ID, PUBLIC_LOUNGE_NAME, withPublicLounge, roomListCount } from './rooms';
 import './App.css';
 
@@ -74,6 +74,7 @@ export default function App() {
   const openEndRef = useRef(null);
   const dmEndRef = useRef(null);
   const popupShownRef = useRef(false);
+  const autoJoinDoneRef = useRef(false);
 
   const applyState = useCallback((state, selfId) => {
     setUsers(state.users || []);
@@ -265,6 +266,35 @@ export default function App() {
   useEffect(() => {
     initNetwork();
   }, [initNetwork]);
+
+  useEffect(() => {
+    if (!networkReady || autoJoinDoneRef.current || screen !== 'lobby') return;
+    const want = sessionStorage.getItem('nearby-auto-join');
+    if (want !== 'lounge') return;
+    sessionStorage.removeItem('nearby-auto-join');
+    autoJoinDoneRef.current = true;
+    const name = displayName.trim() || randomName();
+    if (!displayName.trim()) setDisplayName(name);
+    const socket = setupSocket();
+    const doJoin = () => {
+      socket.emit('join', {
+        roomId: PUBLIC_LOUNGE_ID,
+        displayName: name,
+        roomLabel: PUBLIC_LOUNGE_NAME,
+        keepPublic: false,
+      });
+    };
+    if (socket.connected) doJoin();
+    else socket.once('connect', doJoin);
+  }, [networkReady, screen, displayName, setupSocket]);
+
+  useEffect(() => {
+    if (networkReady) return undefined;
+    const retry = setInterval(() => {
+      if (screen === 'lobby' && !lobbyLoading) initNetwork();
+    }, 10000);
+    return () => clearInterval(retry);
+  }, [networkReady, screen, lobbyLoading, initNetwork]);
 
   useEffect(() => {
     const base = serverBase || getServerUrl();
@@ -565,13 +595,18 @@ export default function App() {
               </button>
 
               {!networkReady && (
-                <div className="manual-connect" style={{ marginTop: 16 }}>
-                  <p>On this WiFi already? Paste the host link:</p>
+                <div className="manual-connect connect-hero">
+                  <p><strong>Not connected to a WiFi host yet.</strong></p>
+                  <p className="hint-small">Someone on this WiFi must run <code>./start.sh</code> on a laptop first.</p>
+                  <button type="button" className="btn-primary btn-connect-wifi" onClick={jumpToLocalHost}>
+                    Connect to this WiFi
+                  </button>
+                  <p className="hint-small">Opens <code>http://nearby.local:3847</code> and joins Open Lounge.</p>
                   <div className="phone-url-row">
                     <input
                       value={manualUrl}
                       onChange={(e) => setManualUrl(e.target.value)}
-                      placeholder="http://nearby.local:3847"
+                      placeholder="http://192.168.x.x:3847"
                     />
                     <button type="button" className="btn-copy" onClick={() => connectToServer(manualUrl)}>
                       Go

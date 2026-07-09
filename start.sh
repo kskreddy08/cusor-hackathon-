@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 cd "$(dirname "$0")"
 PORT=3847
 
@@ -30,4 +29,16 @@ if lsof -ti:$PORT >/dev/null 2>&1; then
 fi
 
 echo ""
-NODE_ENV=production node server/index.js
+echo "  Starting host (keeps running — Ctrl+C to stop)..."
+echo ""
+
+while true; do
+  NODE_ENV=production node server/index.js
+  code=$?
+  if [ "$code" -eq 0 ]; then
+    break
+  fi
+  echo ""
+  echo "  ⚠️  Server stopped — restarting in 2 seconds..."
+  sleep 2
+done

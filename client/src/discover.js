@@ -26,7 +26,10 @@ export async function checkServer(base) {
   const url = base.replace(/\/$/, '');
   try {
     const res = await fetch(`${url}/api/health`, {
-      signal: AbortSignal.timeout(800),
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      signal: AbortSignal.timeout(1500),
       cache: 'no-store',
     });
     if (!res.ok) return null;
@@ -158,20 +161,23 @@ export async function discoverFromUniversalLink(onProgress) {
     if (hit) return hit;
   }
 
-  const jumpTargets = [];
-  if (cleanSaved && cleanSaved.startsWith('http://') && !cleanSaved.includes('loca.lt')) {
-    jumpTargets.push(cleanSaved);
-  }
-  jumpTargets.push(`http://nearby.local:${PORT}`);
-
-  for (const target of jumpTargets) {
-    onProgress?.('Opening Nearby on this WiFi…');
-    window.location.replace(target);
-    await wait(2000);
-  }
+  onProgress?.('Looking for nearby.local…');
+  const mdnsHit = await checkServer(`http://nearby.local:${PORT}`);
+  if (mdnsHit) return mdnsHit;
 
   onProgress?.('Scanning your WiFi…');
   return discoverServer(onProgress);
+}
+
+/** One-tap connect from the universal link page. */
+export function jumpToLocalHost() {
+  try { sessionStorage.setItem('nearby-auto-join', 'lounge'); } catch {}
+  const saved = localStorage.getItem('nearby-server');
+  if (saved?.startsWith('http://') && !saved.includes('loca.lt')) {
+    window.location.replace(saved.replace(/\/$/, ''));
+    return;
+  }
+  window.location.replace(`http://nearby.local:${PORT}`);
 }
 
 export function saveServer(url) {
