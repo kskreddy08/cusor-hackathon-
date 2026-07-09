@@ -360,19 +360,15 @@ app.get('/api/rooms', (_req, res) => {
 app.get('/api/info', (_req, res) => {
   const ips = getLocalIPs();
   const phoneUrls = ips.map((ip) => `http://${ip}:${PORT}`);
-  const tunnelUrl = getTunnelUrl();
+  const lanUrl = `http://nearby.local:${PORT}`;
   res.json({
     port: PORT,
     ips,
     phoneUrls,
-    tunnelUrl,
-    bestPhoneUrl: tunnelUrl || phoneUrls[0] || null,
+    lanUrl,
+    bestPhoneUrl: lanUrl,
     joinUrl: `http://localhost:${PORT}`,
-    phoneHint: tunnelUrl
-      ? `Works on any network: ${tunnelUrl}`
-      : phoneUrls[0]
-        ? `Same WiFi only: ${phoneUrls[0]}`
-        : 'Run ./start-phone.sh for a link that works on any phone',
+    phoneHint: `Same WiFi: open ${lanUrl} on any phone or laptop`,
   });
 });
 
@@ -386,23 +382,23 @@ if (process.env.NODE_ENV === 'production') {
 
 server.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
-  const tunnelUrl = getTunnelUrl();
+  const lanName = `http://nearby.local:${PORT}`;
+
+  try {
+    const { Bonjour } = require('bonjour-service');
+    const bonjour = new Bonjour();
+    bonjour.publish({ name: 'nearby', type: 'http', port: PORT });
+  } catch (e) {
+    console.log('  (mDNS advertise skipped:', e.message, ')');
+  }
+
   console.log('\n  ╔══════════════════════════════════════════════╗');
-  console.log('  ║  Nearby is running!                          ║');
+  console.log('  ║  Nearby — same WiFi chat is live!             ║');
   console.log('  ╚══════════════════════════════════════════════╝\n');
-  console.log(`  LAPTOP:  http://localhost:${PORT}`);
-  if (tunnelUrl) {
-    console.log('\n  📱 PHONE (any network — use this!):');
-    console.log(`  → ${tunnelUrl}`);
-  }
-  if (ips.length) {
-    console.log('\n  📱 PHONE (same WiFi only):');
-    ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
-  }
-  if (!tunnelUrl && !ips.length) {
-    console.log('\n  📱 PHONE: run ./start-phone.sh for a shareable link');
-  }
-  console.log('\n  ⚠  localhost does NOT work on your phone.');
-  console.log('  ⚠  If same WiFi fails, use: ./start-phone.sh');
+  console.log(`  This device:     http://localhost:${PORT}`);
+  console.log(`\n  ANY device on same WiFi — open in browser:`);
+  console.log(`  → ${lanName}   ← easiest, bookmark this!`);
+  ips.forEach((ip) => console.log(`  → http://${ip}:${PORT}`));
+  console.log('\n  One person runs ./start.sh. Everyone else just opens the link.');
   console.log('  Keep this terminal open.\n');
 });

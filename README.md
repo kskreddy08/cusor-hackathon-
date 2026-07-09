@@ -1,47 +1,52 @@
-# Nearby — Anonymous WiFi Chat
+# Nearby — Same WiFi Chat
 
-## Phone not working? Use this:
+Anonymous chat for **anyone on the same WiFi**. One person hosts, everyone else joins.
+
+## How it works
+
+```
+Person A (laptop)  →  runs ./start.sh  →  becomes the host
+Person B (phone)   →  opens http://nearby.local:3847  →  sees all rooms
+Person C (tablet)  →  same link  →  joins a room  →  chats
+```
+
+- **Auto-discovers** the host on your WiFi (scans network)
+- **Rooms** show up for everyone automatically
+- **Create** or **join** a room, chat openly, add friends, DM privately
+
+## Start (one person hosts)
 
 ```bash
 npm run install:all
-chmod +x start-phone.sh
-./start-phone.sh
-```
-
-It prints a link like `https://xxxx.loca.lt` — **open that on your phone**.  
-Works on any network. WiFi/mobile data both fine. No localhost.
-
----
-
-## Laptop only (same WiFi)
-
-```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-- Laptop: `http://localhost:3847`
-- Phone (same WiFi): `http://192.168.x.x:3847` from terminal
+## Everyone else on same WiFi
 
----
+Open in browser (phone, laptop, tablet):
 
-## How to know it's working
+```
+http://nearby.local:3847
+```
 
-On the app home screen you should see:
-- **App ✓**
-- **Live chat ✓**
+Or use the IP address printed in the terminal.
 
-Both green = working. Create a room on laptop, join on phone.
+**Rules:**
+- Same WiFi network
+- Do NOT use `localhost` on phones
+- Host keeps terminal open
 
----
+## First time on phone
 
-## Test alone (2 tabs)
+1. Connect to the **same WiFi**
+2. Open Safari/Chrome
+3. Type: `http://nearby.local:3847`
+4. App scans WiFi → shows rooms → join or create
 
-1. `./start.sh`
-2. Two tabs at `http://localhost:3847`
-3. Tab 1 create room, Tab 2 join, chat
+## Test alone
 
----
+Two tabs at `http://localhost:3847` — create room in one, join in other.
 
 ## Verify
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
+import { discoverServer, checkServer, saveServer, getServerUrl } from './discover';
 import './App.css';
 
 const ADJECTIVES = ['Blue', 'Swift', 'Calm', 'Bold', 'Bright', 'Cool', 'Wild', 'Zen', 'Lucky', 'Neon'];
@@ -20,20 +21,12 @@ function slugify(text) {
   return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
 }
 
-function getServerUrl() {
-  const saved = localStorage.getItem('nearby-server');
-  if (saved) return saved.replace(/\/$/, '');
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('server')) return params.get('server').replace(/\/$/, '');
-  return window.location.origin;
-}
-
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('lobby'); // lobby | create | chat
+  const [screen, setScreen] = useState('scanning'); // scanning | no-host | lobby | create | chat
   const [roomId, setRoomId] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomLabel, setRoomLabel] = useState('');
@@ -61,6 +54,8 @@ export default function App() {
   const [socketOk, setSocketOk] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [showManual, setShowManual] = useState(false);
+  const [scanStatus, setScanStatus] = useState('Connecting to your WiFi…');
+  const [serverBase, setServerBase] = useState(null);
 
   const socketRef = useRef(null);
   const myIdRef = useRef(null);
@@ -147,17 +142,10 @@ export default function App() {
       });
     });
 
-    socket.on('connect_error', (err) => {
+    socket.on('connect_error', () => {
       setSocketOk(false);
-      const onPhone = isMobileDevice() || !['localhost', '127.0.0.1'].includes(window.location.hostname);
-      if (onPhone) {
-        setLobbyError(
-          'Cannot connect. Ask the host to run ./start-phone.sh and send you the https:// link. Same WiFi? Use http://192.168.x.x:3847 not localhost.'
-        );
-        setShowManual(true);
-      } else {
-        setLobbyError(`Connection failed: ${err.message}. Run ./start.sh and keep terminal open.`);
-      }
+      setLobbyError('Connection lost. Same WiFi? Open http://nearby.local:3847 or scan again.');
+      setShowManual(true);
     });
 
     socket.on('error', ({ message }) => setLobbyError(message));
@@ -168,35 +156,65 @@ export default function App() {
   const connectToServer = useCallback((baseUrl) => {
     const clean = baseUrl?.trim().replace(/\/$/, '');
     if (!clean) return;
-    localStorage.setItem('nearby-server', clean);
+    saveServer(clean);
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
+    setServerBase(clean);
     window.location.href = clean;
   }, []);
 
-  useEffect(() => {
-    const base = getServerUrl();
-    fetch(`${base}/api/info`, { signal: AbortSignal.timeout(10000) })
-      .then((r) => r.json())
-      .then((info) => {
-        setServerInfo(info);
-        setNetworkReady(true);
-        setupSocket();
-      })
-      .catch(() => {
-        const onPhone = !['localhost', '127.0.0.1'].includes(window.location.hostname);
-        setLobbyError(
-          onPhone
-            ? 'Cannot reach the app. Ask the host to run ./start-phone.sh on laptop and open the https:// link they send you.'
-            : 'Could not start. Run ./start.sh or ./start-phone.sh and keep the terminal open.'
-        );
-      });
+  const initNetwork = useCallback(async () => {
+    setScanStatus('Checking for Nearby on this WiFi…');
+    const current = getServerUrl();
+    let base = await checkServer(current);
 
+    if (!base && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      base = await checkServer(`http://localhost:3847`);
+    }
+
+    if (!base) {
+      setScreen('scanning');
+      base = await discoverServer(setScanStatus);
+    }
+
+    if (!base) {
+      setScreen('no-host');
+      setScanStatus('No Nearby host found on this WiFi.');
+      return;
+    }
+
+    saveServer(base);
+    setServerBase(base);
+
+    const here = window.location.origin.replace(/\/$/, '');
+    if (base !== here) {
+      window.location.href = base;
+      return;
+    }
+
+    try {
+      const info = await fetch(`${base}/api/info`, { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+      setServerInfo(info);
+      setNetworkReady(true);
+      setScreen('lobby');
+      setupSocket();
+    } catch {
+      setScreen('no-host');
+      setLobbyError('Could not connect. Run ./start.sh on a device on this WiFi.');
+    }
+  }, [setupSocket]);
+
+  useEffect(() => {
+    initNetwork();
+  }, [initNetwork]);
+
+  useEffect(() => {
+    const base = serverBase || getServerUrl();
     const poll = setInterval(() => {
       if (screen !== 'lobby' && screen !== 'create') return;
-      fetch(`${getServerUrl()}/api/rooms`)
+      fetch(`${base}/api/rooms`)
         .then((r) => r.json())
         .then(({ rooms, count }) => {
           setAvailableRooms(rooms || []);
@@ -204,20 +222,8 @@ export default function App() {
         })
         .catch(() => {});
     }, 3000);
-
-    const pollInfo = setInterval(() => {
-      if (screen !== 'lobby' && screen !== 'create') return;
-      fetch(`${getServerUrl()}/api/info`)
-        .then((r) => r.json())
-        .then((info) => setServerInfo(info))
-        .catch(() => {});
-    }, 2000);
-
-    return () => {
-      clearInterval(poll);
-      clearInterval(pollInfo);
-    };
-  }, [screen, setupSocket, connectToServer]);
+    return () => clearInterval(poll);
+  }, [screen, serverBase]);
 
   const leaveRoom = () => {
     socketRef.current?.emit('leave-room');
@@ -291,8 +297,7 @@ export default function App() {
   const hasIncoming = (id) => friendRequests.incoming.some((r) => r.from === id);
 
   const isHostComputer = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const phoneUrl = serverInfo?.bestPhoneUrl || serverInfo?.tunnelUrl || serverInfo?.phoneUrls?.[0] || null;
-  const isTunnel = Boolean(serverInfo?.tunnelUrl);
+  const phoneUrl = serverInfo?.lanUrl || serverInfo?.bestPhoneUrl || serverInfo?.phoneUrls?.[0] || null;
 
   const copyPhoneUrl = async () => {
     const url = phoneUrl;
@@ -305,6 +310,57 @@ export default function App() {
       setLobbyError('Copy failed — type the URL manually in your phone browser.');
     }
   };
+
+  if (screen === 'scanning') {
+    return (
+      <div className="join-screen">
+        <div className="join-card scanning-card">
+          <div className="logo pulse">📡</div>
+          <h1>Nearby</h1>
+          <p className="tagline">Finding chat on your WiFi…</p>
+          <p className="scan-status">{scanStatus}</p>
+          <div className="spinner" />
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === 'no-host') {
+    return (
+      <div className="join-screen">
+        <div className="join-card lobby-card">
+          <div className="logo">📡</div>
+          <h1>Nearby</h1>
+          <p className="tagline">Same WiFi chat</p>
+          <div className="network-status offline">
+            <span className="dot" />
+            No host found on this WiFi
+          </div>
+          <div className="empty-rooms">
+            <p><strong>Step 1:</strong> One person runs <code>./start.sh</code> on their laptop (same WiFi).</p>
+            <p><strong>Step 2:</strong> Everyone opens <code>http://nearby.local:3847</code> in their browser.</p>
+            <p className="hint-small">Or use the IP address shown in the terminal.</p>
+          </div>
+          <button type="button" className="btn-primary btn-create" onClick={() => { setScreen('scanning'); initNetwork(); }}>
+            Scan WiFi again
+          </button>
+          <div className="manual-connect" style={{ marginTop: 16 }}>
+            <p>Have a link? Paste it here:</p>
+            <div className="phone-url-row">
+              <input
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                placeholder="http://nearby.local:3847"
+              />
+              <button type="button" className="btn-copy" onClick={() => connectToServer(manualUrl)}>
+                Go
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (screen === 'lobby' || screen === 'create') {
     return (
@@ -356,40 +412,23 @@ export default function App() {
 
           {isHostComputer && phoneUrl && screen === 'lobby' && (
             <div className="phone-help">
-              <h3>📱 Open on your phone</h3>
-              {isTunnel ? (
-                <p>Works on <strong>any network</strong>. If you see a warning page, tap <strong>Continue</strong>.</p>
-              ) : (
-                <p>Same WiFi only. If it fails, run <code>./start-phone.sh</code> on laptop.</p>
-              )}
+              <h3>📱 Same WiFi — share with anyone</h3>
+              <p>Any phone/laptop on this WiFi can open this link:</p>
               <div className="phone-url-row">
                 <code>{phoneUrl}</code>
                 <button type="button" className="btn-copy" onClick={copyPhoneUrl}>
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-            </div>
-          )}
-
-          {showManual && screen === 'lobby' && (
-            <div className="manual-connect">
-              <p><strong>Phone not connecting?</strong> Paste the link from the laptop:</p>
-              <div className="phone-url-row">
-                <input
-                  value={manualUrl}
-                  onChange={(e) => setManualUrl(e.target.value)}
-                  placeholder="https://xxxx.loca.lt or http://192.168.1.5:3847"
-                />
-                <button type="button" className="btn-copy" onClick={() => connectToServer(manualUrl)}>
-                  Go
-                </button>
-              </div>
+              {serverInfo?.phoneUrls?.length > 1 && (
+                <p className="hint-small">Also: {serverInfo.phoneUrls.join(' · ')}</p>
+              )}
             </div>
           )}
 
           {!isHostComputer && networkReady && screen === 'lobby' && (
             <div className="phone-help on-phone">
-              <p>✓ You're on a phone/device. Connected to the host.</p>
+              <p>✓ Connected on same WiFi. Pick a room or create one.</p>
             </div>
           )}
 
