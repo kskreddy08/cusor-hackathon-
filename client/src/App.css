@@ -946,3 +946,104 @@
 .phone-help.share-link {
   margin-bottom: 16px;
 }
+
+.public-lounge-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(6, 182, 212, 0.08));
+}
+
+.public-lounge-card strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+
+.room-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.room-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--accent-hover);
+}
+
+.room-pill.default {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+}
+
+.room-item.room-public {
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.btn-join-lounge {
+  background: #16a34a;
+}
+
+.btn-join-lounge:hover {
+  background: #15803d;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.checkbox-field input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.create-intro {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.host-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 8px;
+  white-space: nowrap;
+}
+
+.host-toggle input {
+  flex-shrink: 0;
+}
+
+.host-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4ade80;
+  margin-right: 8px;
+}

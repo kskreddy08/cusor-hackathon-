@@ -49,6 +49,28 @@ const info = await fetch(`${BASE}/api/info`).then((r) => r.json());
 if (!info.lanUrl) fail('api/info missing lanUrl');
 if (!info.universalLink) fail('api/info missing universalLink');
 
+const loungeRooms = await fetch(`${BASE}/api/rooms`).then((r) => r.json());
+const lounge = loungeRooms.rooms.find((r) => r.id === 'public-lounge');
+if (!lounge || !lounge.isDefault || !lounge.persistent) fail('public lounge missing from API');
+
+// --- persistent hosted room stays after host leaves ---
+const host = await connect();
+host.emit('join', {
+  roomId: 'hosted-room',
+  displayName: 'HostUser',
+  roomLabel: 'Hosted Room',
+  keepPublic: true,
+});
+await once(host, 'joined');
+host.emit('leave-room');
+await once(host, 'left-room');
+await wait(400);
+const afterLeave = await fetch(`${BASE}/api/rooms`).then((r) => r.json());
+if (!afterLeave.rooms.find((r) => r.id === 'hosted-room' && r.persistent)) {
+  fail('persistent hosted room not listed after host left');
+}
+host.disconnect();
+
 // --- user A creates room ---
 const a = await connect();
 const aJoinPromise = once(a, 'joined');
