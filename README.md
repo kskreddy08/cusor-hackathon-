@@ -13,6 +13,14 @@
 
 ## The universal link (share everywhere)
 
+**Live now:**
+
+```
+https://kskreddy08.github.io/cusor-hackathon-
+```
+
+Optional Vercel URL (after you import the repo in Vercel):
+
 ```
 https://nearby-chat.vercel.app
 ```
@@ -55,12 +63,9 @@ npm run build:universal
 # Deploy client/dist — set UNIVERSAL_LINK env to your deployed URL when running ./start.sh
 ```
 
-On Vercel, this repo includes `vercel.json` — connect the repo and deploy. Then set:
+On Vercel, connect this GitHub repo — `vercel.json` is already configured. After deploy, set `UNIVERSAL_LINK` to your Vercel URL when running `./start.sh`.
 
-```bash
-export UNIVERSAL_LINK=https://your-app.vercel.app
-./start.sh
-```
+GitHub Pages deploys automatically on push to `main` via `.github/workflows/deploy-universal.yml`.
 
 ## Test
 

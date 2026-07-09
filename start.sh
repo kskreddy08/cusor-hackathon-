@@ -20,7 +20,7 @@ fi
 echo "  Building app..."
 npm run build
 
-UNIVERSAL_LINK="${UNIVERSAL_LINK:-https://nearby-chat.vercel.app}"
+UNIVERSAL_LINK="${UNIVERSAL_LINK:-https://kskreddy08.github.io/cusor-hackathon-}"
 export UNIVERSAL_LINK
 
 if lsof -ti:$PORT >/dev/null 2>&1; then

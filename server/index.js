@@ -7,7 +7,7 @@ const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
 const PORT = process.env.PORT || 3847;
-const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://nearby-chat.vercel.app').replace(/\/$/, '');
+const UNIVERSAL_LINK = (process.env.UNIVERSAL_LINK || 'https://kskreddy08.github.io/cusor-hackathon-').replace(/\/$/, '');
 const app = express();
 app.use(cors());
 app.use(express.json());
