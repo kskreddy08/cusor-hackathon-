@@ -127,7 +127,10 @@ export function saveServer(url) {
 
 export function getServerUrl() {
   const saved = localStorage.getItem('nearby-server');
-  if (saved) return saved.replace(/\/$/, '');
+  if (saved && !saved.includes('loca.lt') && !saved.includes('ngrok')) {
+    return saved.replace(/\/$/, '');
+  }
+  if (saved) localStorage.removeItem('nearby-server');
   const params = new URLSearchParams(window.location.search);
   if (params.get('server')) return params.get('server').replace(/\/$/, '');
   if (!['localhost', '127.0.0.1'].includes(window.location.hostname)) {

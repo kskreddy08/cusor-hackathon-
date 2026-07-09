@@ -166,12 +166,13 @@ export default function App() {
   }, []);
 
   const initNetwork = useCallback(async () => {
-    setScanStatus('Checking for Nearby on this WiFi…');
+    setScanStatus('Looking for Nearby on your WiFi…');
+
     const current = getServerUrl();
     let base = await checkServer(current);
 
     if (!base && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-      base = await checkServer(`http://localhost:3847`);
+      base = await checkServer('http://localhost:3847');
     }
 
     if (!base) {
@@ -181,7 +182,6 @@ export default function App() {
 
     if (!base) {
       setScreen('no-host');
-      setScanStatus('No Nearby host found on this WiFi.');
       return;
     }
 
@@ -190,19 +190,24 @@ export default function App() {
 
     const here = window.location.origin.replace(/\/$/, '');
     if (base !== here) {
-      window.location.href = base;
+      window.location.replace(base);
       return;
     }
 
     try {
-      const info = await fetch(`${base}/api/info`, { signal: AbortSignal.timeout(10000) }).then((r) => r.json());
+      const [info, roomsData] = await Promise.all([
+        fetch(`${base}/api/info`, { signal: AbortSignal.timeout(10000) }).then((r) => r.json()),
+        fetch(`${base}/api/rooms`, { signal: AbortSignal.timeout(10000) }).then((r) => r.json()),
+      ]);
       setServerInfo(info);
+      setAvailableRooms(roomsData.rooms || []);
+      setRoomCount(roomsData.count ?? roomsData.rooms?.length ?? 0);
       setNetworkReady(true);
       setScreen('lobby');
       setupSocket();
     } catch {
       setScreen('no-host');
-      setLobbyError('Could not connect. Run ./start.sh on a device on this WiFi.');
+      setLobbyError('Could not connect. Someone on this WiFi must run ./start.sh first.');
     }
   }, [setupSocket]);
 
@@ -221,7 +226,7 @@ export default function App() {
           setRoomCount(count ?? rooms?.length ?? 0);
         })
         .catch(() => {});
-    }, 3000);
+    }, 2000);
     return () => clearInterval(poll);
   }, [screen, serverBase]);
 
@@ -380,7 +385,7 @@ export default function App() {
         <div className="join-card lobby-card">
           <div className="logo">📡</div>
           <h1>Nearby</h1>
-          <p className="tagline">Anonymous chat for people on the same WiFi</p>
+          <p className="tagline">Same WiFi — see rooms, join or create, chat</p>
 
           <div className={`network-status ${networkReady && socketOk ? 'online' : networkReady ? 'partial' : 'offline'}`}>
             <span className="dot" />
@@ -436,14 +441,14 @@ export default function App() {
             <>
               <div className="rooms-section">
                 <div className="rooms-header">
-                  <h2>Rooms nearby</h2>
-                  <span className="room-count-pill">{roomCount} active</span>
+                  <h2>Rooms on this WiFi</h2>
+                  <span className="room-count-pill">{roomCount} live</span>
                 </div>
 
                 {availableRooms.length === 0 ? (
                   <div className="empty-rooms">
-                    <p>No rooms yet on this network.</p>
-                    <p className="hint-small">Create one and others will see it automatically.</p>
+                    <p>No rooms yet — be the first!</p>
+                    <p className="hint-small">Create a room below. Everyone on this WiFi will see it.</p>
                   </div>
                 ) : (
                   <ul className="room-list">
