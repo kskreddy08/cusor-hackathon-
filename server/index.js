@@ -3,7 +3,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 
@@ -65,13 +64,7 @@ function getLocalIPs() {
 }
 
 function getTunnelUrl() {
-  if (process.env.TUNNEL_URL) return process.env.TUNNEL_URL;
-  const file = path.join(__dirname, '..', 'tunnel-url.txt');
-  try {
-    return fs.readFileSync(file, 'utf8').trim() || null;
-  } catch {
-    return null;
-  }
+  return null; // tunnels disabled — same WiFi only
 }
 
 function getOrCreateRoom(roomId, displayName) {

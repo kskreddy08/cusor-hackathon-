@@ -89,6 +89,14 @@ export default function App() {
       setConnected(true);
       setSocketOk(true);
       setLobbyError(null);
+      const base = getServerUrl();
+      fetch(`${base}/api/rooms`)
+        .then((r) => r.json())
+        .then(({ rooms, count }) => {
+          setAvailableRooms(rooms || []);
+          setRoomCount(count ?? rooms?.length ?? 0);
+        })
+        .catch(() => {});
     });
 
     socket.on('disconnect', () => {
@@ -129,6 +137,14 @@ export default function App() {
       setDms({});
       setDmWith(null);
       setTab('open');
+      popupShownRef.current = false;
+      fetch(`${getServerUrl()}/api/rooms`)
+        .then((r) => r.json())
+        .then(({ rooms, count }) => {
+          setAvailableRooms(rooms || []);
+          setRoomCount(count ?? rooms?.length ?? 0);
+        })
+        .catch(() => {});
     });
 
     socket.on('state', (state) => {
