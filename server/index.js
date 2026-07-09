@@ -50,11 +50,35 @@ function getLocalIPs() {
   return ips;
 }
 
-function getOrCreateRoom(roomId) {
+function getOrCreateRoom(roomId, displayName) {
   if (!rooms.has(roomId)) {
-    rooms.set(roomId, { openMessages: [], users: new Map() });
+    rooms.set(roomId, {
+      id: roomId,
+      displayName: displayName || roomId,
+      openMessages: [],
+      users: new Map(),
+      createdAt: Date.now(),
+    });
   }
   return rooms.get(roomId);
+}
+
+function listRooms() {
+  const now = Date.now();
+  return Array.from(rooms.values())
+    .filter((r) => r.users.size > 0 || now - r.createdAt < 60 * 60 * 1000)
+    .map((r) => ({
+      id: r.id,
+      name: r.displayName,
+      userCount: r.users.size,
+      createdAt: r.createdAt,
+    }))
+    .sort((a, b) => b.userCount - a.userCount || b.createdAt - a.createdAt);
+}
+
+function broadcastRoomsList() {
+  const list = listRooms();
+  io.emit('rooms-list', { rooms: list, count: list.length });
 }
 
 function roomUserList(room) {
@@ -127,7 +151,9 @@ io.on('connection', (socket) => {
   let currentUser = null;
   let currentRoomId = null;
 
-  socket.on('join', ({ roomId, displayName }) => {
+  socket.emit('rooms-list', { rooms: listRooms(), count: listRooms().length });
+
+  socket.on('join', ({ roomId, displayName, roomLabel }) => {
     if (!roomId || !displayName?.trim()) {
       socket.emit('error', { message: 'Room and display name are required.' });
       return;
@@ -135,6 +161,7 @@ io.on('connection', (socket) => {
 
     const cleanRoom = roomId.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '-').slice(0, 32);
     const cleanName = displayName.trim().slice(0, 24);
+    const label = (roomLabel || roomId).trim().slice(0, 32);
 
     if (currentUser) {
       const oldRoom = rooms.get(currentRoomId);
@@ -147,7 +174,7 @@ io.on('connection', (socket) => {
       }
     }
 
-    const room = getOrCreateRoom(cleanRoom);
+    const room = getOrCreateRoom(cleanRoom, label);
     const user = {
       id: uuidv4(),
       socketId: socket.id,
@@ -175,6 +202,8 @@ io.on('connection', (socket) => {
     for (const u of room.users.values()) {
       emitStateToUser(io.sockets.sockets.get(u.socketId), cleanRoom, room, u.id);
     }
+
+    broadcastRoomsList();
   });
 
   socket.on('open-message', ({ text }) => {
@@ -292,10 +321,13 @@ io.on('connection', (socket) => {
       emitStateToUser(io.sockets.sockets.get(u.socketId), currentRoomId, room, u.id);
     }
 
-    if (room.users.size === 0) {
-      // Keep room data briefly; clean stale friendships keys optional
-    }
+    broadcastRoomsList();
   });
+});
+
+app.get('/api/rooms', (_req, res) => {
+  const roomsList = listRooms();
+  res.json({ rooms: roomsList, count: roomsList.length });
 });
 
 app.get('/api/info', (_req, res) => {

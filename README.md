@@ -1,51 +1,44 @@
 # Nearby — Anonymous WiFi Chat
 
-Connect with people on the same WiFi. Anonymous names, open room chat, friend requests, and private DMs.
+Connect with people on the same WiFi. Anonymous names, auto-discovered rooms, open chat, friend requests, and private DMs.
 
-## Quick start (3 minutes)
+## Quick start
 
 ```bash
 npm run install:all
 npm run dev
 ```
 
-- **Server** runs on `http://0.0.0.0:3847`
-- **Client** runs on `http://localhost:5173` (proxies to server)
-
-Open the client on your laptop, then on your phone (same WiFi) open:
-
-```
-http://<your-laptop-ip>:5173
-```
-
-Use the **same room name** on every device (e.g. `cafe-wifi`).
-
-## Production (single port)
+Or production (single port, best for testing on phones):
 
 ```bash
-npm run install:all
-npm run build
-npm start
+chmod +x start.sh
+./start.sh
 ```
 
-Everything runs on port **3847**. Share `http://<your-ip>:3847` with anyone on the network.
+Open `http://localhost:3847` on your laptop. On your phone (same WiFi): `http://<laptop-ip>:3847`
 
 ## How it works
 
-1. **Join** — Pick a room name (your WiFi / venue) and an anonymous display name.
-2. **Open chat** — Public messages visible to everyone in the room.
-3. **People** — See who's online. Tap **+ Connect** to send a friend request (optional intro).
-4. **Messages** — After they accept, private 1:1 chat unlocks.
+1. **Connect** — Open the app on the same network. It detects the local server automatically.
+2. **Rooms popup** — Shows how many rooms are live on the network (e.g. "3 rooms live on your network").
+3. **Join or create** — Pick an existing room from the list, or tap **+ Create a room**.
+4. **Open chat** — Public messages for everyone in the room.
+5. **People** — See who's online. Send a **+ Connect** request to add a friend.
+6. **Messages** — Private 1:1 chat after they accept.
 
-## Same WiFi notes
+No QR codes. No manual room URLs. Rooms appear automatically when someone creates them on the network.
 
-- One device should run the server (`npm run dev` or `npm start`).
-- Everyone connects to that machine's **local IP** on the same network.
-- Some guest/café WiFi blocks device-to-device traffic (AP isolation). If that happens, use a phone hotspot instead.
+## Test with two devices
+
+1. Run `./start.sh` on your laptop
+2. Open `http://localhost:3847` in a browser tab
+3. Open `http://<laptop-ip>:3847` on your phone (or a second browser tab)
+4. On device 1: **Create a room** called "Coffee chat"
+5. On device 2: the room shows up in the lobby automatically — tap **Join**
+6. Chat in Open chat, send a friend request, accept, then DM
 
 ## Stack
 
-- **Server:** Node.js, Express, Socket.io
-- **Client:** React, Vite
-
-No accounts, no database — session data lives in memory (resets when server restarts).
+- Node.js + Express + Socket.io (in-memory)
+- React + Vite

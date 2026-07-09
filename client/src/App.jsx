@@ -16,6 +16,10 @@ function formatTime(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function slugify(text) {
+  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32);
+}
+
 function getServerUrl() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('server')) return params.get('server');
@@ -24,8 +28,9 @@ function getServerUrl() {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('join'); // join | chat
+  const [screen, setScreen] = useState('lobby'); // lobby | create | chat
   const [roomId, setRoomId] = useState('');
+  const [roomLabel, setRoomLabel] = useState('');
   const [displayName, setDisplayName] = useState(() => randomName());
   const [myId, setMyId] = useState(null);
   const [users, setUsers] = useState([]);
@@ -33,34 +38,24 @@ export default function App() {
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState({ incoming: [], outgoing: [] });
   const [dms, setDms] = useState({});
-  const [tab, setTab] = useState('open'); // open | people | dms
+  const [tab, setTab] = useState('open');
   const [dmWith, setDmWith] = useState(null);
   const [openInput, setOpenInput] = useState('');
   const [dmInput, setDmInput] = useState('');
   const [requestTarget, setRequestTarget] = useState(null);
   const [requestIntro, setRequestIntro] = useState('');
-  const [serverInfo, setServerInfo] = useState(null);
+  const [networkReady, setNetworkReady] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [roomCount, setRoomCount] = useState(0);
+  const [showRoomsPopup, setShowRoomsPopup] = useState(false);
+  const [lobbyError, setLobbyError] = useState(null);
 
   const socketRef = useRef(null);
   const myIdRef = useRef(null);
   const openEndRef = useRef(null);
   const dmEndRef = useRef(null);
-
-  useEffect(() => {
-    fetch(`${getServerUrl()}/api/info`)
-      .then((r) => r.json())
-      .then(setServerInfo)
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    openEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [openMessages]);
-
-  useEffect(() => {
-    dmEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [dms, dmWith]);
+  const popupShownRef = useRef(false);
 
   const applyState = useCallback((state, selfId) => {
     setUsers(state.users || []);
@@ -71,11 +66,8 @@ export default function App() {
     if (selfId) setMyId(selfId);
   }, []);
 
-  const joinRoom = (e) => {
-    e.preventDefault();
-    const room = roomId.trim();
-    const name = displayName.trim();
-    if (!room || !name) return;
+  const setupSocket = useCallback(() => {
+    if (socketRef.current?.connected) return socketRef.current;
 
     const url = getServerUrl();
     const socket = io(url || undefined, { transports: ['websocket', 'polling'] });
@@ -83,15 +75,27 @@ export default function App() {
 
     socket.on('connect', () => {
       setConnected(true);
-      socket.emit('join', { roomId: room, displayName: name });
+      setLobbyError(null);
     });
 
     socket.on('disconnect', () => setConnected(false));
 
-    socket.on('joined', ({ userId }) => {
+    socket.on('rooms-list', ({ rooms, count }) => {
+      setAvailableRooms(rooms || []);
+      setRoomCount(count ?? rooms?.length ?? 0);
+      if (!popupShownRef.current) {
+        setShowRoomsPopup(true);
+        popupShownRef.current = true;
+        setTimeout(() => setShowRoomsPopup(false), 4000);
+      }
+    });
+
+    socket.on('joined', ({ userId, roomId: joinedRoom }) => {
       myIdRef.current = userId;
       setMyId(userId);
+      setRoomId(joinedRoom);
       setScreen('chat');
+      setShowRoomsPopup(false);
     });
 
     socket.on('state', (state) => {
@@ -109,7 +113,69 @@ export default function App() {
       }));
     });
 
-    socket.on('error', ({ message }) => alert(message));
+    socket.on('error', ({ message }) => setLobbyError(message));
+
+    return socket;
+  }, [applyState]);
+
+  useEffect(() => {
+    const base = getServerUrl();
+    fetch(`${base}/api/info`)
+      .then((r) => r.json())
+      .then(() => {
+        setNetworkReady(true);
+        setupSocket();
+      })
+      .catch(() => {
+        setLobbyError('Could not reach the network. Make sure you are on the same WiFi as the host.');
+      });
+
+    const poll = setInterval(() => {
+      if (screen !== 'lobby' && screen !== 'create') return;
+      fetch(`${getServerUrl()}/api/rooms`)
+        .then((r) => r.json())
+        .then(({ rooms, count }) => {
+          setAvailableRooms(rooms || []);
+          setRoomCount(count ?? rooms?.length ?? 0);
+        })
+        .catch(() => {});
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [screen, setupSocket]);
+
+  useEffect(() => {
+    openEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [openMessages]);
+
+  useEffect(() => {
+    dmEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [dms, dmWith]);
+
+  const joinRoom = (targetRoomId, targetLabel) => {
+    const name = displayName.trim();
+    if (!name) {
+      setLobbyError('Pick an anonymous name first.');
+      return;
+    }
+    const socket = setupSocket();
+    const doJoin = () => {
+      socket.emit('join', {
+        roomId: targetRoomId,
+        displayName: name,
+        roomLabel: targetLabel || targetRoomId,
+      });
+    };
+    if (socket.connected) doJoin();
+    else socket.once('connect', doJoin);
+  };
+
+  const handleCreateRoom = (e) => {
+    e.preventDefault();
+    const label = roomLabel.trim();
+    if (!label) return;
+    const id = slugify(label) || `room-${Date.now()}`;
+    joinRoom(id, label);
   };
 
   const sendOpen = (e) => {
@@ -141,55 +207,109 @@ export default function App() {
   };
 
   const userById = (id) => users.find((u) => u.id === id);
-
   const isFriend = (id) => friends.includes(id);
   const hasOutgoing = (id) => friendRequests.outgoing.some((r) => r.to === id);
   const hasIncoming = (id) => friendRequests.incoming.some((r) => r.from === id);
 
-  const networkUrl = serverInfo?.ips?.[0]
-    ? `http://${serverInfo.ips[0]}:${serverInfo?.port || 3847}`
-    : null;
-
-  if (screen === 'join') {
+  if (screen === 'lobby' || screen === 'create') {
     return (
       <div className="join-screen">
-        <div className="join-card">
+        {showRoomsPopup && networkReady && (
+          <div className="rooms-popup">
+            <span className="popup-icon">📡</span>
+            <strong>
+              {roomCount === 0
+                ? 'No active rooms yet — be the first!'
+                : `${roomCount} room${roomCount === 1 ? '' : 's'} live on your network`}
+            </strong>
+            <p>Tap a room below to join, or create your own.</p>
+          </div>
+        )}
+
+        <div className="join-card lobby-card">
           <div className="logo">📡</div>
           <h1>Nearby</h1>
           <p className="tagline">Anonymous chat for people on the same WiFi</p>
 
-          <form onSubmit={joinRoom}>
-            <label>
-              <span>WiFi / Room name</span>
-              <input
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                placeholder="e.g. cafe-wifi, library-5g"
-                autoFocus
-                required
-              />
-            </label>
-            <label>
-              <span>Your anonymous name</span>
-              <input
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name"
-                maxLength={24}
-                required
-              />
-            </label>
-            <button type="submit" className="btn-primary">
-              Join room
-            </button>
-          </form>
+          <div className={`network-status ${networkReady ? 'online' : 'offline'}`}>
+            <span className="dot" />
+            {networkReady ? 'Connected to local network' : 'Looking for network…'}
+          </div>
 
-          {networkUrl && (
-            <div className="network-hint">
-              <p>Share with others on your WiFi:</p>
-              <code>{networkUrl}</code>
-              <p className="hint-small">Use the same room name on every device.</p>
-            </div>
+          <label className="name-field">
+            <span>Your anonymous name</span>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Display name"
+              maxLength={24}
+            />
+          </label>
+
+          {lobbyError && <p className="error-text">{lobbyError}</p>}
+
+          {screen === 'lobby' && (
+            <>
+              <div className="rooms-section">
+                <div className="rooms-header">
+                  <h2>Rooms nearby</h2>
+                  <span className="room-count-pill">{roomCount} active</span>
+                </div>
+
+                {availableRooms.length === 0 ? (
+                  <div className="empty-rooms">
+                    <p>No rooms yet on this network.</p>
+                    <p className="hint-small">Create one and others will see it automatically.</p>
+                  </div>
+                ) : (
+                  <ul className="room-list">
+                    {availableRooms.map((room) => (
+                      <li key={room.id} className="room-item">
+                        <div className="room-info">
+                          <strong>{room.name}</strong>
+                          <span>{room.userCount} {room.userCount === 1 ? 'person' : 'people'} online</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-join"
+                          onClick={() => joinRoom(room.id, room.name)}
+                        >
+                          Join
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <button
+                type="button"
+                className="btn-primary btn-create"
+                onClick={() => setScreen('create')}
+              >
+                + Create a room
+              </button>
+            </>
+          )}
+
+          {screen === 'create' && (
+            <form onSubmit={handleCreateRoom} className="create-form">
+              <label>
+                <span>Room name</span>
+                <input
+                  value={roomLabel}
+                  onChange={(e) => setRoomLabel(e.target.value)}
+                  placeholder="e.g. Coffee chat, Study group"
+                  autoFocus
+                  required
+                  maxLength={32}
+                />
+              </label>
+              <div className="create-actions">
+                <button type="button" onClick={() => setScreen('lobby')}>Back</button>
+                <button type="submit" className="btn-primary">Create & join</button>
+              </div>
+            </form>
           )}
         </div>
       </div>
@@ -198,13 +318,14 @@ export default function App() {
 
   const dmUser = dmWith ? userById(dmWith) : null;
   const pendingCount = friendRequests.incoming.length;
+  const activeRoomName = availableRooms.find((r) => r.id === roomId)?.name || roomId;
 
   return (
     <div className="app">
       <header className="header">
         <div>
           <h1>Nearby</h1>
-          <span className="room-badge">#{roomId}</span>
+          <span className="room-badge">{activeRoomName}</span>
         </div>
         <div className={`status ${connected ? 'on' : 'off'}`}>
           {connected ? `${users.length} nearby` : 'Reconnecting…'}
@@ -280,7 +401,7 @@ export default function App() {
             )}
 
             <section className="section">
-              <h3>On this network ({users.length})</h3>
+              <h3>In this room ({users.length})</h3>
               {users.filter((u) => u.id !== myId).map((u) => (
                 <div key={u.id} className="person-card">
                   <div className="avatar" style={{ background: u.color }}>{u.displayName[0]}</div>
@@ -300,7 +421,7 @@ export default function App() {
                 </div>
               ))}
               {users.length <= 1 && (
-                <p className="empty">You're the only one here. Share the WiFi URL so others can join!</p>
+                <p className="empty">You're alone in this room. Others on the network will see it in the lobby.</p>
               )}
             </section>
           </div>
