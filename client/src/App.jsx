@@ -26,7 +26,8 @@ function isMobileDevice() {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState('scanning'); // scanning | no-host | lobby | create | chat
+  const [screen, setScreen] = useState('lobby'); // lobby | scanning | no-host | create | chat
+  const [lobbyLoading, setLobbyLoading] = useState(true);
   const [roomId, setRoomId] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomLabel, setRoomLabel] = useState('');
@@ -182,7 +183,8 @@ export default function App() {
   }, []);
 
   const initNetwork = useCallback(async () => {
-    setScanStatus('Looking for Nearby on your WiFi…');
+    setLobbyLoading(true);
+    setLobbyError(null);
 
     const current = getServerUrl();
     let base = await checkServer(current);
@@ -193,16 +195,19 @@ export default function App() {
 
     if (!base) {
       setScreen('scanning');
+      setScanStatus('Finding Nearby on your WiFi…');
       base = await discoverServer(setScanStatus);
     }
 
     if (!base) {
       setScreen('no-host');
+      setLobbyLoading(false);
       return;
     }
 
     saveServer(base);
     setServerBase(base);
+    setScreen('lobby');
 
     const here = window.location.origin.replace(/\/$/, '');
     if (base !== here) {
@@ -219,11 +224,12 @@ export default function App() {
       setAvailableRooms(roomsData.rooms || []);
       setRoomCount(roomsData.count ?? roomsData.rooms?.length ?? 0);
       setNetworkReady(true);
-      setScreen('lobby');
+      setLobbyLoading(false);
       setupSocket();
     } catch {
       setScreen('no-host');
-      setLobbyError('Could not connect. Someone on this WiFi must run ./start.sh first.');
+      setLobbyLoading(false);
+      setLobbyError('Could not load rooms. Someone on this WiFi must run ./start.sh first.');
     }
   }, [setupSocket]);
 
@@ -358,9 +364,9 @@ export default function App() {
             No host found on this WiFi
           </div>
           <div className="empty-rooms">
-            <p><strong>Step 1:</strong> One person runs <code>./start.sh</code> on their laptop (same WiFi).</p>
-            <p><strong>Step 2:</strong> Everyone opens <code>http://nearby.local:3847</code> in their browser.</p>
-            <p className="hint-small">Or use the IP address shown in the terminal.</p>
+            <p><strong>This link only works on the same WiFi.</strong></p>
+            <p>Rooms you see here are only from people connected to <em>your</em> network right now — not from other places in the world.</p>
+            <p className="hint-small">Ask someone on this WiFi to run <code>./start.sh</code>, then open <code>http://nearby.local:3847</code></p>
           </div>
           <button type="button" className="btn-primary btn-create" onClick={() => { setScreen('scanning'); initNetwork(); }}>
             Scan WiFi again
@@ -401,70 +407,46 @@ export default function App() {
         <div className="join-card lobby-card">
           <div className="logo">📡</div>
           <h1>Nearby</h1>
-          <p className="tagline">Same WiFi — see rooms, join or create, chat</p>
+          <p className="tagline">Open link · same WiFi only · live rooms</p>
 
-          <div className={`network-status ${networkReady && socketOk ? 'online' : networkReady ? 'partial' : 'offline'}`}>
-            <span className="dot" />
-            {!networkReady
-              ? 'Connecting…'
-              : socketOk
-                ? 'Connected — ready to chat'
-                : 'Server found, connecting live chat…'}
+          <div className="wifi-scope-banner">
+            <span className="wifi-icon">📶</span>
+            <div>
+              <strong>Rooms on this WiFi right now</strong>
+              <p>Anyone on the same network can open this link and see these rooms. Other WiFi networks have their own separate rooms.</p>
+            </div>
           </div>
 
-          {networkReady && (
-            <div className="status-checks">
-              <span className={networkReady ? 'ok' : ''}>App {networkReady ? '✓' : '…'}</span>
-              <span className={socketOk ? 'ok' : ''}>Live chat {socketOk ? '✓' : '…'}</span>
-            </div>
-          )}
-
-          <label className="name-field">
-            <span>Your anonymous name</span>
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Display name"
-              maxLength={24}
-            />
-          </label>
-
-          {lobbyError && <p className="error-text">{lobbyError}</p>}
-
           {isHostComputer && phoneUrl && screen === 'lobby' && (
-            <div className="phone-help">
-              <h3>📱 Same WiFi — share with anyone</h3>
-              <p>Any phone/laptop on this WiFi can open this link:</p>
+            <div className="phone-help share-link">
+              <h3>Share this open link</h3>
+              <p>Send to anyone on your WiFi — they tap it and see the same rooms:</p>
               <div className="phone-url-row">
                 <code>{phoneUrl}</code>
                 <button type="button" className="btn-copy" onClick={copyPhoneUrl}>
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
               </div>
-              {serverInfo?.phoneUrls?.length > 1 && (
-                <p className="hint-small">Also: {serverInfo.phoneUrls.join(' · ')}</p>
-              )}
-            </div>
-          )}
-
-          {!isHostComputer && networkReady && screen === 'lobby' && (
-            <div className="phone-help on-phone">
-              <p>✓ Connected on same WiFi. Pick a room or create one.</p>
             </div>
           )}
 
           {screen === 'lobby' && (
             <>
-              <div className="rooms-section">
+              <div className="rooms-section rooms-hero">
                 <div className="rooms-header">
-                  <h2>Rooms on this WiFi</h2>
-                  <span className="room-count-pill">{roomCount} live</span>
+                  <h2>Live rooms</h2>
+                  <span className="room-count-pill">{lobbyLoading ? '…' : `${roomCount} now`}</span>
                 </div>
 
-                {availableRooms.length === 0 ? (
+                {lobbyLoading ? (
+                  <div className="empty-rooms loading-rooms">
+                    <div className="spinner sm" />
+                    <p>Loading rooms on this WiFi…</p>
+                  </div>
+                ) : availableRooms.length === 0 ? (
                   <div className="empty-rooms">
-                    <p>No rooms yet — be the first!</p>
-                    <p className="hint-small">Create a room below. Everyone on this WiFi will see it.</p>
+                    <p>No rooms yet — start one below.</p>
+                    <p className="hint-small">Everyone who opens this link on the same WiFi will see it.</p>
                   </div>
                 ) : (
                   <ul className="room-list">
@@ -486,6 +468,18 @@ export default function App() {
                   </ul>
                 )}
               </div>
+
+              <label className="name-field compact">
+                <span>Your name (anonymous)</span>
+                <input
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Pick a name before joining"
+                  maxLength={24}
+                />
+              </label>
+
+              {lobbyError && <p className="error-text">{lobbyError}</p>}
 
               <button
                 type="button"

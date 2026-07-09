@@ -361,7 +361,8 @@ app.get('/api/info', (_req, res) => {
     lanUrl,
     bestPhoneUrl: lanUrl,
     joinUrl: `http://localhost:${PORT}`,
-    phoneHint: `Same WiFi: open ${lanUrl} on any phone or laptop`,
+    phoneHint: `Open this link on the same WiFi to see live rooms`,
+    scope: 'wifi-local',
   });
 });
 

@@ -1,8 +1,17 @@
 # Nearby — Same WiFi Chat
 
-Everyone on the **same WiFi** sees the same rooms. Join or create, then chat.
+**One open link. Everyone on the same WiFi sees the same live rooms.**
 
-## Start (one person hosts)
+## How it works
+
+```
+1. One person runs ./start.sh (hosts for this WiFi)
+2. Share the link: http://nearby.local:3847
+3. Anyone on SAME WiFi opens link → sees live rooms → joins or creates
+4. Different WiFi = different rooms (isolated per network)
+```
+
+## Start hosting
 
 ```bash
 npm run install:all
@@ -10,29 +19,19 @@ chmod +x start.sh
 ./start.sh
 ```
 
-`./start-phone.sh` does the same thing (no tunnel).
-
-## Everyone on same WiFi opens
+## The open link (share on your WiFi)
 
 ```
 http://nearby.local:3847
 ```
 
-Or the `http://192.168.x.x:3847` address from the terminal.
+No login. No app install. Tap link → see rooms → join.
 
-## What users see
+**Important:** This link only shows rooms for **your current WiFi**. People on other networks see their own rooms, not yours.
 
-1. List of **live rooms** on this WiFi
-2. Tap **Join** on any room
-3. Or tap **+ Create a room**
-4. Chat in **Open chat**, add friends in **People**, DM in **Messages**
+## Test
 
-## Do NOT use
-
-- `localhost` on phone
-- `loca.lt` / tunnel links (causes bad gateway)
-- Vercel / cloud hosting
-
-## Test alone
-
-Two browser tabs at `http://localhost:3847`.
+```bash
+npm test
+npm run test:ui
+```
