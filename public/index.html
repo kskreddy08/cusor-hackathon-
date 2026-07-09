@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0f" />
+  <title>Cursor Remote Control</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-top">
+        <h1>Remote Control</h1>
+        <span id="status-badge" class="badge badge-off">offline</span>
+      </div>
+      <p class="subtitle">Control your Cursor agent from anywhere</p>
+    </header>
+
+    <section class="stats" id="stats">
+      <div class="stat"><span class="stat-label">Mode</span><span id="stat-mode" class="stat-value">agent</span></div>
+      <div class="stat"><span class="stat-label">Model</span><span id="stat-model" class="stat-value">default</span></div>
+      <div class="stat"><span class="stat-label">Clients</span><span id="stat-clients" class="stat-value">0</span></div>
+      <div class="stat"><span class="stat-label">Queue</span><span id="stat-queue" class="stat-value">0</span></div>
+    </section>
+
+    <section class="quick-actions">
+      <button class="btn btn-primary" data-cmd="/remote-control">Enable</button>
+      <button class="btn" data-cmd="/status">Status</button>
+      <button class="btn" data-cmd="/help">Help</button>
+    </section>
+
+    <section class="mode-bar">
+      <span class="mode-label">Mode</span>
+      <div class="mode-chips" id="mode-chips">
+        <button class="chip active" data-mode="agent">Agent</button>
+        <button class="chip" data-mode="plan">Plan</button>
+        <button class="chip" data-mode="ask">Ask</button>
+        <button class="chip" data-mode="debug">Debug</button>
+      </div>
+    </section>
+
+    <section class="feed" id="feed" aria-live="polite">
+      <p class="feed-empty">Send a command to get started. Try <code>/remote-control</code></p>
+    </section>
+
+    <form class="composer" id="composer">
+      <input
+        id="input"
+        type="text"
+        placeholder="/agent fix the login bug"
+        autocomplete="off"
+        enterkeyhint="send"
+      />
+      <button type="submit" class="btn btn-send" aria-label="Send">↑</button>
+    </form>
+  </div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
